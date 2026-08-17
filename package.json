@@ -1,0 +1,76 @@
+{
+  "name": "dsh-engram",
+  "version": "0.1.0",
+  "description": "Controlled cross-session memory for DeepSeek Harness: panel-approved, append-only version chain, cited evidence, two-layer conflict detection.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.cts",
+      "default": "./dist/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "build": "tsup && node scripts/wrap-client.mjs dist/client.cjs dist/client.js dsh-engram",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "check": "tsc -p tsconfig.check.json --noEmit && npm run test && npm run build",
+    "prepack": "npm run build",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "memory",
+    "agent",
+    "approval",
+    "cordis"
+  ],
+  "author": "TtTRz <romc1224@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TtTRz/dsh-engram.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TtTRz/dsh-engram/issues"
+  },
+  "homepage": "https://github.com/TtTRz/dsh-engram#readme",
+  "dependencies": {},
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@types/node": "^24.3.0",
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "MIT"
+}

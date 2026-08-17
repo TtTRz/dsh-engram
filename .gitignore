@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+lib/
+
+# test / coverage
+coverage/
+*.tsbuildinfo
+
+# env / secrets — never commit credentials
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# internal handoff / notes — not part of the public package
+HANDOFF.md
+
+# editor / OS
+.DS_Store
+*.swp
