@@ -48,23 +48,26 @@ interface PendingView {
 
 const CSS = [
   '.engram-panel { font-family: var(--dsw-font-family, system-ui); }',
-  '.engram-panel-empty { color: var(--dsw-alias-text-secondary, #888); padding: 12px 0; }',
-  '.engram-item { border: 1px solid var(--dsw-alias-border, #e0e0e0); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }',
-  '.engram-item.drift { border-color: var(--dsw-alias-state-warning, #f0a020); }',
-  '.engram-item.conflict { border-left: 3px solid var(--dsw-alias-state-danger, #e04040); }',
+  '.engram-panel-empty { color: var(--dsw-alias-label-secondary); padding: 12px 0; }',
+  '.engram-item { border: 1px solid var(--dsw-alias-border-subtle); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }',
+  '.engram-item.drift { border-color: var(--dsw-alias-state-warn-primary); }',
+  '.engram-item.conflict { border-left: 3px solid var(--dsw-alias-state-danger-primary); }',
   '.engram-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }',
   '.engram-item-name { font-weight: 600; }',
-  '.engram-tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--dsw-alias-fill-secondary, #eee); color: var(--dsw-alias-text-secondary, #666); }',
-  '.engram-tag.stable { background: #e3f2fd; color: #1565c0; }',
-  '.engram-tag.agent { background: #fff3e0; color: #e65100; }',
+  '.engram-tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-secondary); }',
+  '.engram-tag.stable { background: var(--dsw-alias-state-info-secondary); color: var(--dsw-alias-state-info-primary); }',
+  '.engram-tag.agent { background: var(--dsw-alias-state-warn-secondary); color: var(--dsw-alias-state-warn-primary); }',
   '.engram-item-text { white-space: pre-wrap; word-break: break-word; margin: 4px 0; }',
-  '.engram-warn { font-size: 12px; color: var(--dsw-alias-state-warning, #c07a00); }',
+  '.engram-warn { font-size: 12px; color: var(--dsw-alias-state-warn-primary); }',
   '.engram-item-actions { display: flex; gap: 8px; margin-top: 8px; }',
-  '.engram-btn { border: 1px solid var(--dsw-alias-border, #ccc); background: var(--dsw-alias-fill, #fff); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px; }',
-  '.engram-btn.approve { background: #2e7d32; color: #fff; border-color: #2e7d32; }',
+  '.engram-btn { border: 1px solid var(--dsw-alias-border-subtle); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px; }',
+  '.engram-btn.approve { background: var(--dsw-alias-state-success-primary); color: var(--dsw-alias-state-success-contrast); border-color: var(--dsw-alias-state-success-primary); }',
   '.engram-btn:disabled { opacity: 0.5; cursor: default; }',
-  '.engram-badge { position: relative; }',
-  '.engram-badge-count { position: absolute; top: -4px; right: -4px; background: #d32f2f; color: #fff; border-radius: 8px; font-size: 10px; min-width: 16px; height: 16px; line-height: 16px; text-align: center; padding: 0 3px; }',
+  '.engram-nav-btn { display: flex; align-items: center; gap: 6px; cursor: pointer; background: transparent; border: none; color: var(--dsw-alias-label-secondary); padding: 7px 12px; border-radius: 8px; font-size: 13px; line-height: 20px; }',
+  '.engram-nav-btn:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }',
+  '.engram-nav-label { display: flex; align-items: center; gap: 6px; }',
+  '.engram-nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-primary); font-size: 11px; font-weight: 600; line-height: 1; }',
+  '.engram-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }',
 ].join('\n')
 
 interface Store {
@@ -278,17 +281,28 @@ export function apply(ctx: {
           return timer.interval(() => void refresh(), 10000)
         }, [])
         const count = store.get().pendings?.length ?? 0
+        const hasPending = count > 0
+        const dotColor = hasPending
+          ? 'var(--dsw-alias-state-warn-primary)'
+          : 'var(--dsw-alias-label-secondary)'
         return React.createElement(
           'button',
           {
-            className: 'engram-btn engram-badge',
-            title: '记忆审批',
+            type: 'button',
+            className: 'engram-nav-btn',
+            title: hasPending ? `记忆审批：${count} 条待批` : '记忆审批',
             onClick: () => setOverlayOpen(true),
-            'aria-label': `记忆审批，${count} 条待批`,
           },
-          '🧠',
-          count > 0
-            ? React.createElement('span', { className: 'engram-badge-count' }, String(count))
+          React.createElement('span', { className: 'engram-dot', style: { background: dotColor } }),
+          props.wide === true
+            ? React.createElement(
+                'span',
+                { className: 'engram-nav-label' },
+                '记忆',
+                hasPending
+                  ? React.createElement('span', { className: 'engram-nav-count' }, String(count))
+                  : null,
+              )
             : null,
         )
       }
@@ -313,11 +327,11 @@ export function apply(ctx: {
               width: 420,
               maxHeight: '70vh',
               overflowY: 'auto',
-              background: 'var(--dsw-alias-surface, #fff)',
-              border: '1px solid var(--dsw-alias-border, #ccc)',
+              background: 'var(--dsw-alias-bg-layer-2)',
+              border: '1px solid var(--dsw-alias-border-subtle)',
               borderRadius: 12,
               padding: 16,
-              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--dsw-alias-shadow-floating)',
               zIndex: 1000,
             },
           },
