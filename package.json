@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "build": "tsup && node scripts/wrap-client.mjs dist/client.cjs dist/client.js dsh-engram",
+    "build": "tsup && node scripts/wrap-client.mjs dist/client.cjs dist/client.js dsh-engram && node scripts/fix-node-builtins.mjs dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
     "check": "tsc -p tsconfig.check.json --noEmit && npm run test && npm run build",
