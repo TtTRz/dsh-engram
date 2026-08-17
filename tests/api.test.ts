@@ -57,9 +57,25 @@ function makeRes(): { res: ServerResponse; body: () => unknown; status: () => nu
 }
 
 function makeCtx(routes: { routes: CapturedRoute[]; register: (r: CapturedRoute) => () => void }) {
-  return {
-    get: (name: string) => (name === 'webServer' ? routes : undefined),
-  } as never
+  const services: Record<string, unknown> = { webServer: routes }
+  const ctx = {
+    get: (name: string) => services[name],
+    // Mirrors cordis ctx.inject for the always-present webServer case:
+    // apply the callback immediately with a child ctx whose effect() runs
+    // synchronously (the route registrations are the effect body).
+    inject: (names: string[], callback: (wsCtx: unknown) => void) => {
+      if (names.includes('webServer') && services.webServer !== undefined) {
+        const wsCtx = {
+          get: (name: string) => services[name],
+          effect: (body: () => unknown) => {
+            body()
+          },
+        }
+        callback(wsCtx)
+      }
+    },
+  }
+  return ctx as never
 }
 
 async function route(handler: CapturedRoute['handler'], req: IncomingMessage, res: ServerResponse) {

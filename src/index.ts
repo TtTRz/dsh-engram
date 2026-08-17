@@ -38,15 +38,12 @@ export function apply(ctx: Context, config?: EngramConfig): void {
 
   registerMemoryTools({ ctx, service, config: resolved, sessionPendings });
 
-  // Panel approval API: capture the service in the closure, never on ctx.
-  ctx.effect(
-    () =>
-      registerEngramRoutes(ctx, service, () => {
-        const cwd = (ctx as { cwd?: string }).cwd;
-        return typeof cwd === 'string' && cwd.length > 0 ? resolveWorkspaceKey(cwd).key : null;
-      }),
-    'dsh-engram.routes',
-  );
+  // Panel approval API: runtime-injects the optional webServer service (see
+  // api.ts). The service instance is captured in the closure, never on ctx.
+  registerEngramRoutes(ctx, service, () => {
+    const cwd = (ctx as { cwd?: string }).cwd;
+    return typeof cwd === 'string' && cwd.length > 0 ? resolveWorkspaceKey(cwd).key : null;
+  });
 
   ctx.effect(() => () => {
     service.close();

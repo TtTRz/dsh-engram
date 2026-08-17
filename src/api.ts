@@ -96,74 +96,88 @@ function pendingView(service: MemoryService): PendingView[] {
 }
 
 /**
- * Register the approval routes. Returns a disposer that unregisters them.
- * The service instance is captured in the closure — never exposed on ctx.
+ * Register the approval routes for the panel (P1a).
+ *
+ * `webServer` is an *optional* service for us: a static `inject: ['webServer']`
+ * would keep the whole plugin waiting on profiles that never provide one
+ * (TUI), and a strict `ctx.get('webServer')` inside our own fiber's effect
+ * runs before the provider's fiber is active — both silently drop the routes
+ * (this shipped as the settings panel 404).
+ *
+ * Runtime injection defers only the routes: the callback fiber applies once
+ * the service appears (immediately when already present), and cordis
+ * registers the child fiber's disposal as a parent effect, so stopping the
+ * plugin unregisters every route.
  */
 export function registerEngramRoutes(
   ctx: Context,
   service: MemoryService,
   resolveWorkspaceKey: () => string | null,
-): () => void {
-  const webServer = ctx.get('webServer') as WebServerLike | undefined
-  if (webServer === undefined) return () => undefined
+): void {
+  ctx.inject(['webServer'], (wsCtx: Context) => {
+    wsCtx.effect(() => {
+      const webServer = wsCtx.get('webServer', false) as WebServerLike | undefined
+      if (webServer === undefined) return undefined
 
-  const disposers: Array<() => void> = []
+      const disposers: Array<() => void> = []
 
-  disposers.push(
-    webServer.register({
-      kind: 'exact',
-      path: '/api/engram/pending',
-      handler: (_req, res) => {
-        send(res, 200, { pendings: pendingView(service) })
-      },
-    }),
-  )
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
+          path: '/api/engram/pending',
+          handler: (_req, res) => {
+            send(res, 200, { pendings: pendingView(service) })
+          },
+        }),
+      )
 
-  disposers.push(
-    webServer.register({
-      kind: 'exact',
-      path: '/api/engram/approve',
-      handler: async (req, res) => {
-        try {
-          const body = await readJsonBody(req)
-          const id = body.id
-          if (typeof id !== 'string' || id.length === 0) {
-            send(res, 400, { ok: false, error: 'id is required' })
-            return
-          }
-          const user = typeof body.user === 'string' ? body.user : undefined
-          const outcome = service.approve(id, user, resolveWorkspaceKey())
-          send(res, 200, outcome)
-        } catch (error) {
-          send(res, 500, { ok: false, error: String(error) })
-        }
-      },
-    }),
-  )
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
+          path: '/api/engram/approve',
+          handler: async (req, res) => {
+            try {
+              const body = await readJsonBody(req)
+              const id = body.id
+              if (typeof id !== 'string' || id.length === 0) {
+                send(res, 400, { ok: false, error: 'id is required' })
+                return
+              }
+              const user = typeof body.user === 'string' ? body.user : undefined
+              const outcome = service.approve(id, user, resolveWorkspaceKey())
+              send(res, 200, outcome)
+            } catch (error) {
+              send(res, 500, { ok: false, error: String(error) })
+            }
+          },
+        }),
+      )
 
-  disposers.push(
-    webServer.register({
-      kind: 'exact',
-      path: '/api/engram/deny',
-      handler: async (req, res) => {
-        try {
-          const body = await readJsonBody(req)
-          const id = body.id
-          if (typeof id !== 'string' || id.length === 0) {
-            send(res, 400, { ok: false, error: 'id is required' })
-            return
-          }
-          const user = typeof body.user === 'string' ? body.user : undefined
-          const outcome = service.deny(id, user)
-          send(res, 200, outcome)
-        } catch (error) {
-          send(res, 500, { ok: false, error: String(error) })
-        }
-      },
-    }),
-  )
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
+          path: '/api/engram/deny',
+          handler: async (req, res) => {
+            try {
+              const body = await readJsonBody(req)
+              const id = body.id
+              if (typeof id !== 'string' || id.length === 0) {
+                send(res, 400, { ok: false, error: 'id is required' })
+                return
+              }
+              const user = typeof body.user === 'string' ? body.user : undefined
+              const outcome = service.deny(id, user)
+              send(res, 200, outcome)
+            } catch (error) {
+              send(res, 500, { ok: false, error: String(error) })
+            }
+          },
+        }),
+      )
 
-  return () => {
-    for (const dispose of disposers) dispose()
-  }
+      return () => {
+        for (const dispose of disposers) dispose()
+      }
+    }, 'dsh-engram.routes')
+  })
 }
