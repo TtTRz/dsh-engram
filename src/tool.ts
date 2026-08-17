@@ -39,23 +39,32 @@ export function registerMemoryTools(deps: ToolDeps): void {
     | undefined;
   if (tools === undefined) return;
 
+  // NOTE: `tools.register()` stores definitions verbatim and the wire
+  // projection passes `parameters` through unchanged — first-party tools rely
+  // on `defineTool` to compile the author shorthand into an object-rooted
+  // JSON Schema. We register raw defs (keeping zero runtime deps), so the
+  // schemas below MUST be pre-compiled: root `type: 'object'`, `required` as
+  // a root array. The shorthand form reaches the gateway with a null root
+  // type and the whole turn fails schema validation.
   const proposeSchema = {
-    name: { type: 'string', required: true, description: 'Memory topic anchor (e.g. "部署端口").' },
-    text: { type: 'string', required: true, description: 'The memory content to persist.' },
-    track: {
-      type: 'string',
-      required: true,
-      description: 'Who produced this: "user" or "agent".',
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Memory topic anchor (e.g. "部署端口").' },
+      text: { type: 'string', description: 'The memory content to persist.' },
+      track: {
+        type: 'string',
+        description: 'Who produced this: "user" or "agent".',
+      },
+      scope: {
+        type: 'string',
+        description: '"global" or "workspace".',
+      },
+      kind_suggestion: {
+        type: 'string',
+        description: 'Optional "stable" or "situational" hint; the approver has the final say.',
+      },
     },
-    scope: {
-      type: 'string',
-      required: true,
-      description: '"global" or "workspace".',
-    },
-    kind_suggestion: {
-      type: 'string',
-      description: 'Optional "stable" or "situational" hint; the approver has the final say.',
-    },
+    required: ['name', 'text', 'track', 'scope'],
   } as const;
 
   const proposeDef = {
@@ -89,7 +98,11 @@ export function registerMemoryTools(deps: ToolDeps): void {
   };
 
   const querySchema = {
-    query: { type: 'string', required: true, description: 'Text to search memory by.' },
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Text to search memory by.' },
+    },
+    required: ['query'],
   } as const;
 
   const queryDef = {
