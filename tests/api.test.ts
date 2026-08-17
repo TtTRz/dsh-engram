@@ -86,7 +86,7 @@ describe('engram approval API', () => {
   it('GET /api/engram/pending lists proposed proposals with drift data', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
-    registerEngramRoutes(makeCtx(web), svc, () => null)
+    registerEngramRoutes(makeCtx(web), svc)
 
     const r = svc.propose({ name: '端口', text: '8899', track: 'user', scope: 'global' }, null)
     const pendingRoute = web.routes.find((x) => x.path === '/api/engram/pending')!
@@ -101,7 +101,7 @@ describe('engram approval API', () => {
   it('POST /api/engram/approve approves a pending', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
-    registerEngramRoutes(makeCtx(web), svc, () => null)
+    registerEngramRoutes(makeCtx(web), svc)
 
     const r = svc.propose({ name: '端口', text: '8899', track: 'user', scope: 'global' }, null)
     const approveRoute = web.routes.find((x) => x.path === '/api/engram/approve')!
@@ -114,7 +114,7 @@ describe('engram approval API', () => {
   it('POST /api/engram/deny denies a pending and leaves no entity', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
-    registerEngramRoutes(makeCtx(web), svc, () => null)
+    registerEngramRoutes(makeCtx(web), svc)
 
     const r = svc.propose({ name: '端口', text: '8899', track: 'user', scope: 'global' }, null)
     const denyRoute = web.routes.find((x) => x.path === '/api/engram/deny')!
@@ -127,7 +127,7 @@ describe('engram approval API', () => {
   it('approve reports drift when the entity moved past base_rev', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
-    registerEngramRoutes(makeCtx(web), svc, () => null)
+    registerEngramRoutes(makeCtx(web), svc)
 
     const p1 = svc.propose({ name: '端口', text: 'v1', track: 'user', scope: 'global' }, null)
     svc.approve(p1.pendingId, 'a')
@@ -147,5 +147,24 @@ describe('engram approval API', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.reason).toBe('drift')
     expect(outcome.drift?.currentRev).toBe(2)
+  })
+
+  it('approve reuses the workspace key captured at propose time (regression: ctx.cwd crash)', async () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
+    const web = fakeWebServer()
+    registerEngramRoutes(makeCtx(web), svc)
+
+    const wk = 'wk-abc123'
+    const r = svc.propose(
+      { name: '部署端口', text: '3080', track: 'user', scope: 'workspace' },
+      wk,
+    )
+    const approveRoute = web.routes.find((x) => x.path === '/api/engram/approve')!
+    const { res, body } = makeRes()
+    await route(approveRoute.handler, makeReq('POST', { id: r.pendingId, user: 'tester' }), res)
+    expect(body()).toMatchObject({ ok: true })
+    const entities = svc.listActiveByScope(wk, 'situational')
+    expect(entities).toHaveLength(1)
+    expect(entities[0]?.workspaceKey).toBe(wk)
   })
 })

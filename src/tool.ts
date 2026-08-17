@@ -20,9 +20,21 @@ export interface ToolDeps {
   sessionPendings: Set<string>;
 }
 
-function workspaceKeyFor(ctx: Context): string | null {
-  // P0: workspace resolution from the harness cwd; P1+ may derive from session
-  const cwd = (ctx as { cwd?: string }).cwd;
+/**
+ * ToolRunContext as handed to `execute` by the tools registry: the agent on
+ * whose behalf the call runs, with its session header cwd — the canonical
+ * workspace anchor (same source dsh-tool-bash uses: `exec.agent?.session.header.cwd`).
+ */
+export interface ToolExecLike {
+  agent?: {
+    session?: {
+      header?: { cwd?: unknown };
+    };
+  };
+}
+
+function workspaceKeyForExec(exec: ToolExecLike | undefined): string | null {
+  const cwd = exec?.agent?.session?.header?.cwd;
   if (typeof cwd === 'string' && cwd.length > 0) return resolveWorkspaceKey(cwd).key;
   return null;
 }
@@ -76,14 +88,17 @@ export function registerMemoryTools(deps: ToolDeps): void {
       schema: { type: 'string' },
       render: (_args: unknown, value: string) => [{ type: 'text', text: value }],
     },
-    execute: async (args: {
-      name: string;
-      text: string;
-      track: 'user' | 'agent';
-      scope: 'global' | 'workspace';
-      kind_suggestion?: 'stable' | 'situational';
-    }) => {
-      const wk = workspaceKeyFor(deps.ctx);
+    execute: async (
+      args: {
+        name: string;
+        text: string;
+        track: 'user' | 'agent';
+        scope: 'global' | 'workspace';
+        kind_suggestion?: 'stable' | 'situational';
+      },
+      exec?: ToolExecLike,
+    ) => {
+      const wk = workspaceKeyForExec(exec);
       const input: ProposeInput = {
         name: args.name,
         text: args.text,
@@ -114,8 +129,8 @@ export function registerMemoryTools(deps: ToolDeps): void {
       schema: { type: 'string' },
       render: (_args: unknown, value: string) => [{ type: 'text', text: value }],
     },
-    execute: async (args: { query: string }) => {
-      const wk = workspaceKeyFor(deps.ctx);
+    execute: async (args: { query: string }, exec?: ToolExecLike) => {
+      const wk = workspaceKeyForExec(exec);
       const hits = deps.service.query(wk, args.query, deps.sessionPendings);
       if (hits.length === 0) return '（无匹配记忆）';
       const lines = hits.map((hit) => {

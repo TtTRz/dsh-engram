@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { registerMemoryTools } from '../src/tool.js';
 import type { ToolDeps } from '../src/tool.js';
 import type { MemoryService } from '../src/service.js';
+import { MemoryService as RealMemoryService } from '../src/service.js';
 import { DEFAULT_CONFIG } from '../src/types.js';
 
 /**
@@ -19,6 +20,7 @@ import { DEFAULT_CONFIG } from '../src/types.js';
 interface RegisteredDef {
   name: string;
   parameters: Record<string, unknown>;
+  execute?: (args: unknown, exec?: unknown) => Promise<unknown>;
 }
 
 function captureDefs(): RegisteredDef[] {
@@ -72,5 +74,41 @@ describe('registerMemoryTools wire schema', () => {
     const properties = propose.parameters.properties as Record<string, { description?: string }>;
     expect(properties.name?.description).toBeTruthy();
     expect(properties.kind_suggestion?.description).toBeTruthy();
+  });
+
+  it('propose/query execute derive the workspace key from exec.agent.session.header.cwd', async () => {
+    const defs: RegisteredDef[] = [];
+    const service = new RealMemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' });
+    const ctx = {
+      get: (key: string) =>
+        key === 'tools' ? { register: (def: RegisteredDef) => defs.push(def) } : undefined,
+    } as unknown as Context;
+    const deps: ToolDeps = {
+      ctx,
+      service,
+      config: DEFAULT_CONFIG,
+      sessionPendings: new Set<string>(),
+    };
+    registerMemoryTools(deps);
+
+    const exec = { agent: { session: { header: { cwd: '/tmp/engram-test-workspace' } } } };
+
+    const propose = defs.find((d) => d.name === 'memory_propose')!;
+    const result = (await propose.execute!(
+      { name: '端口', text: '3080', track: 'user', scope: 'workspace' },
+      exec,
+    )) as string;
+    expect(result).toContain('待审');
+
+    const pendings = service.listProposed();
+    expect(pendings).toHaveLength(1);
+    expect(pendings[0]?.workspaceKey).toBeTruthy();
+
+    const query = defs.find((d) => d.name === 'memory_query')!;
+    const hits = (await query.execute!({ query: '端口' }, exec)) as string;
+    expect(hits).toContain('pending-self');
+
+    const hitsNoCwd = (await query.execute!({ query: '端口' }, undefined)) as string;
+    expect(hitsNoCwd).toContain('pending-self');
   });
 });

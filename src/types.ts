@@ -99,6 +99,8 @@ export interface PendingProposal {
   validUntil?: number;
   /** X2: entity.currentRev at propose time; approve validates drift. */
   baseRev?: number;
+  /** Resolved workspace key captured at propose time; approve reuses it (no re-derivation). */
+  workspaceKey?: string;
   /** X1 layer-2 output: suspected conflicting entity ids (candidates only). */
   conflictWith?: string[];
   status: PendingStatus;

@@ -112,12 +112,11 @@ function pendingView(service: MemoryService): PendingView[] {
 export function registerEngramRoutes(
   ctx: Context,
   service: MemoryService,
-  resolveWorkspaceKey: () => string | null,
 ): void {
   ctx.inject(['webServer'], (wsCtx: Context) => {
     wsCtx.effect(() => {
       const webServer = wsCtx.get('webServer', false) as WebServerLike | undefined
-      if (webServer === undefined) return undefined
+      if (webServer === undefined) return () => undefined
 
       const disposers: Array<() => void> = []
 
@@ -144,7 +143,7 @@ export function registerEngramRoutes(
                 return
               }
               const user = typeof body.user === 'string' ? body.user : undefined
-              const outcome = service.approve(id, user, resolveWorkspaceKey())
+              const outcome = service.approve(id, user)
               send(res, 200, outcome)
             } catch (error) {
               send(res, 500, { ok: false, error: String(error) })

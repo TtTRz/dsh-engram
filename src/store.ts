@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS pending (
   evidence      TEXT,
   valid_until   INTEGER,
   base_rev      INTEGER,
+  workspace_key TEXT,
   conflict_with TEXT,
   status        TEXT NOT NULL,
   created_at    INTEGER NOT NULL
@@ -137,6 +138,7 @@ interface PendingRow {
   evidence: string | null;
   valid_until: number | null;
   base_rev: number | null;
+  workspace_key: string | null;
   conflict_with: string | null;
   status: string;
   created_at: number;
@@ -198,6 +200,7 @@ function rowToPending(row: PendingRow): PendingProposal {
     ...(row.evidence !== null ? { evidence: JSON.parse(row.evidence) as Citation[] } : {}),
     ...(row.valid_until !== null ? { validUntil: row.valid_until } : {}),
     ...(row.base_rev !== null ? { baseRev: row.base_rev } : {}),
+    ...(row.workspace_key !== null ? { workspaceKey: row.workspace_key } : {}),
     ...(row.conflict_with !== null ? { conflictWith: JSON.parse(row.conflict_with) as string[] } : {}),
     status: row.status as PendingProposal['status'],
     createdAt: row.created_at,
@@ -249,8 +252,23 @@ export class SQLiteProvider {
   constructor(dbPath: string) {
     this.db = new DatabaseSync(dbPath);
     this.db.exec(SCHEMA);
+    this.migrate();
     if (dbPath !== ':memory:') {
       this.db.exec('PRAGMA journal_mode=WAL;');
+    }
+  }
+
+  /**
+   * Idempotent lightweight migrations for databases created by older builds.
+   * `CREATE TABLE IF NOT EXISTS` never alters an existing table, so columns
+   * added later must be applied here via PRAGMA inspection.
+   */
+  private migrate(): void {
+    const cols = this.db.prepare('PRAGMA table_info(pending)').all() as unknown as Array<{
+      name: string;
+    }>;
+    if (!cols.some((c) => c.name === 'workspace_key')) {
+      this.db.exec('ALTER TABLE pending ADD COLUMN workspace_key TEXT');
     }
   }
 
@@ -429,8 +447,8 @@ export class SQLiteProvider {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO pending (id, entity_id, name, action, track, scope, kind, text, reason, evidence, valid_until, base_rev, conflict_with, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?)`,
+        `INSERT INTO pending (id, entity_id, name, action, track, scope, kind, text, reason, evidence, valid_until, base_rev, workspace_key, conflict_with, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?)`,
       )
       .run(
         id,
@@ -445,6 +463,7 @@ export class SQLiteProvider {
         p.evidence !== undefined ? JSON.stringify(p.evidence) : null,
         p.validUntil ?? null,
         p.baseRev ?? null,
+        p.workspaceKey ?? null,
         p.conflictWith !== undefined ? JSON.stringify(p.conflictWith) : null,
         now,
       );

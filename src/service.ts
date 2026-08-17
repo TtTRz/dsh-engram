@@ -146,6 +146,7 @@ export class MemoryService {
       scope: input.scope,
       kind,
       text: input.text,
+      ...(workspaceKey !== null ? { workspaceKey } : {}),
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
       ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
       ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
@@ -182,6 +183,12 @@ export class MemoryService {
   approve(pendingId: string, user?: string, workspaceKey: string | null = null): ApproveOutcome {
     const pending = this.store.getPending(pendingId);
     if (pending === null) throw new InvalidInputError(`no such pending: ${pendingId}`);
+
+    // The key captured at propose time is authoritative (the panel may approve
+    // long after the proposing session ended — re-deriving a "current cwd" here
+    // was wrong and crashed on the nonexistent ctx.cwd). The parameter remains
+    // only for callers passing an explicit key / legacy rows.
+    const wk = pending.workspaceKey ?? workspaceKey;
 
     // ① First-come-first-served: status must be 'proposed'
     if (pending.status === 'approved') {
@@ -243,7 +250,7 @@ export class MemoryService {
       } else {
         // New entity
         const { text: nameNorm } = normalize(pending.name);
-        if (pending.scope === 'workspace' && workspaceKey === null) {
+        if (pending.scope === 'workspace' && wk === null) {
           this.store.db.exec('ROLLBACK');
           throw new InvalidInputError(
             'workspace-scoped memory requires a workspace key at approve time',
@@ -255,8 +262,8 @@ export class MemoryService {
           track: pending.track,
           scope: pending.scope,
           kind: pending.kind,
-          ...(pending.scope === 'workspace' && workspaceKey !== null
-            ? { workspaceKey }
+          ...(pending.scope === 'workspace' && wk !== null
+            ? { workspaceKey: wk }
             : {}),
           state: 'active',
           ...(pending.validUntil !== undefined ? { validUntil: pending.validUntil } : {}),

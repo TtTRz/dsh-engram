@@ -15,7 +15,6 @@ import { registerMemoryTools } from './tool.js';
 import { registerEngramRoutes } from './api.js';
 import { registerSnapshotSection } from './snapshot.js';
 import type { SystemPromptLike } from './snapshot.js';
-import { resolveWorkspaceKey } from './workspace.js';
 
 export const name = 'dsh-engram';
 export const inject = ['tools', 'systemPrompt'] as const;
@@ -51,11 +50,9 @@ export function apply(ctx: Context, config?: EngramConfig): void {
   registerSnapshotSection(systemPrompt, service, resolved.snapshotBudget);
 
   // Panel approval API: runtime-injects the optional webServer service (see
-  // api.ts). The service instance is captured in the closure, never on ctx.
-  registerEngramRoutes(ctx, service, () => {
-    const cwd = (ctx as { cwd?: string }).cwd;
-    return typeof cwd === 'string' && cwd.length > 0 ? resolveWorkspaceKey(cwd).key : null;
-  });
+  // api.ts). The workspace key now travels with the pending row (captured at
+  // propose time), so the routes need no ctx-derived cwd.
+  registerEngramRoutes(ctx, service);
 
   ctx.effect(() => () => {
     service.close();
