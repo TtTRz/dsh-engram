@@ -74,6 +74,11 @@ export class MemoryService {
     return this.store.listActiveByScope(workspaceKey, kind);
   }
 
+  /** Global stable current versions for the snapshot channel (§5.2, P2). */
+  listStableSnapshot() {
+    return this.store.listStableSnapshot();
+  }
+
   searchFts(query: string, limit: number) {
     return this.store.searchFts(query, limit);
   }

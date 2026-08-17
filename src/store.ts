@@ -338,6 +338,23 @@ export class SQLiteProvider {
     return row.total;
   }
 
+  /**
+   * Snapshot channel rows (§5.1/§5.2): global stable current versions,
+   * newest update first. Workspace-scoped stable entries never enter the
+   * snapshot — they go to the recall channel (P3).
+   */
+  listStableSnapshot(): Array<{ name: string; text: string; updatedAt: number }> {
+    const rows = this.db
+      .prepare(
+        `SELECT e.name, v.text, e.updated_at
+         FROM memory_entity e JOIN memory_version v ON v.entity_id = e.id AND v.rev = e.current_rev
+         WHERE e.state = 'active' AND e.kind = 'stable' AND e.workspace_key IS NULL
+         ORDER BY e.updated_at DESC`,
+      )
+      .all() as unknown as Array<{ name: string; text: string; updated_at: number }>;
+    return rows.map((row) => ({ name: row.name, text: row.text, updatedAt: row.updated_at }));
+  }
+
   // -- version ---------------------------------------------------------------
 
   insertVersion(v: InsertVersion, now: number): void {

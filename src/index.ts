@@ -2,8 +2,9 @@
  * dsh-engram plugin entry.
  *
  * P0: mounts the memory tools (propose / query) and holds a private
- * MemoryService per plugin instance. Snapshot injection (P2) and recall
- * injection (P3) plug in later — the service is the single write path.
+ * MemoryService per plugin instance. P2: the frozen stable snapshot section
+ * (§5.2). Recall injection (P3) plugs in later — the service is the single
+ * write path.
  */
 
 import type { Context } from '@deepseek-ai/cordis';
@@ -12,10 +13,12 @@ import type { MemoryConfig } from './types.js';
 import { MemoryService } from './service.js';
 import { registerMemoryTools } from './tool.js';
 import { registerEngramRoutes } from './api.js';
+import { registerSnapshotSection } from './snapshot.js';
+import type { SystemPromptLike } from './snapshot.js';
 import { resolveWorkspaceKey } from './workspace.js';
 
 export const name = 'dsh-engram';
-export const inject = ['tools'] as const;
+export const inject = ['tools', 'systemPrompt'] as const;
 
 export interface EngramConfig {
   /** Database path; ':memory:' for ephemeral. */
@@ -38,6 +41,15 @@ export function apply(ctx: Context, config?: EngramConfig): void {
 
   registerMemoryTools({ ctx, service, config: resolved, sessionPendings });
 
+  // P2: frozen stable snapshot in every session's system prompt (§5.2).
+  // Static inject guarantees presence; throwing beats a silently missing
+  // snapshot (the settings-panel 404 taught us that lesson).
+  const systemPrompt = ctx.get('systemPrompt') as SystemPromptLike | undefined;
+  if (systemPrompt === undefined) {
+    throw new Error('dsh-engram: systemPrompt service unavailable despite inject');
+  }
+  registerSnapshotSection(systemPrompt, service, resolved.snapshotBudget);
+
   // Panel approval API: runtime-injects the optional webServer service (see
   // api.ts). The service instance is captured in the closure, never on ctx.
   registerEngramRoutes(ctx, service, () => {
@@ -52,6 +64,7 @@ export function apply(ctx: Context, config?: EngramConfig): void {
 
 export { MemoryService } from './service.js';
 export { SQLiteProvider } from './store.js';
+export { renderSnapshot, registerSnapshotSection } from './snapshot.js';
 export { resolveWorkspaceKey, normalizeGitOrigin, findGitRoot } from './workspace.js';
 export { normalize, toHalfWidth, toSimplified, extractTerms, expandSynonyms } from './normalize.js';
 export * from './types.js';
