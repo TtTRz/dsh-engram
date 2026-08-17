@@ -67,8 +67,27 @@ const CSS = [
   '.engram-nav-btn:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }',
   '.engram-nav-label { display: flex; align-items: center; gap: 6px; }',
   '.engram-nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-primary); font-size: 11px; font-weight: 600; line-height: 1; }',
-  '.engram-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }',
+  '.engram-nav-icon { display: inline-flex; flex: none; color: inherit; }',
 ].join('\n')
+
+/** Lucide "bookmark" glyph — the memory marker, stroked in currentColor so it follows the nav button's hover/pending color. */
+function memoryIcon(): React.ReactNode {
+  return React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      width: 16,
+      height: 16,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 2,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      'aria-hidden': true,
+    },
+    React.createElement('path', { d: 'M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z' }),
+  )
+}
 
 interface Store {
   pendings: PendingView[] | null
@@ -272,8 +291,8 @@ export function apply(ctx: {
   }
 
   slots.inject('sidebar.footer.action', () =>
-    slots.register({ name: 'sidebar.footer.action', id: 'engram-approve', order: 70 }, () => {
-      function Badge(props: SlotRenderProps): React.ReactNode {
+    slots.register({ name: 'sidebar.footer.action', id: 'engram-approve', order: 70 }, (slotProps) => {
+      function Badge(): React.ReactNode {
         useStore()
         React.useEffect(() => {
           void refresh()
@@ -282,9 +301,7 @@ export function apply(ctx: {
         }, [])
         const count = store.get().pendings?.length ?? 0
         const hasPending = count > 0
-        const dotColor = hasPending
-          ? 'var(--dsw-alias-state-warn-primary)'
-          : 'var(--dsw-alias-label-secondary)'
+        const wide = slotProps.wide === true
         return React.createElement(
           'button',
           {
@@ -293,8 +310,15 @@ export function apply(ctx: {
             title: hasPending ? `记忆审批：${count} 条待批` : '记忆审批',
             onClick: () => setOverlayOpen(true),
           },
-          React.createElement('span', { className: 'engram-dot', style: { background: dotColor } }),
-          props.wide === true
+          React.createElement(
+            'span',
+            {
+              className: 'engram-nav-icon',
+              style: hasPending ? { color: 'var(--dsw-alias-state-warn-primary)' } : undefined,
+            },
+            memoryIcon(),
+          ),
+          wide
             ? React.createElement(
                 'span',
                 { className: 'engram-nav-label' },
