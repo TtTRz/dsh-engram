@@ -66,6 +66,7 @@ const CSS = [
   '.engram-nav-btn { display: flex; align-items: center; gap: 6px; cursor: pointer; background: transparent; border: none; color: var(--dsw-alias-label-secondary); padding: 7px 12px; border-radius: 8px; font-size: 13px; line-height: 20px; }',
   '.engram-nav-btn:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }',
   '.engram-nav-label { display: flex; align-items: center; gap: 6px; }',
+  '.engram-nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-primary); font-size: 11px; font-weight: 600; line-height: 1; }',
   '.engram-nav-icon { display: inline-flex; flex: none; color: inherit; }',
   '.engram-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--dsw-alias-border-subtle); margin-bottom: 10px; }',
   '.engram-tab { border: none; background: transparent; color: var(--dsw-alias-label-secondary); padding: 6px 12px; cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; }',
@@ -686,6 +687,9 @@ export function apply(ctx: {
                 'span',
                 { className: 'engram-nav-label' },
                 '记忆',
+                hasPending
+                  ? React.createElement('span', { className: 'engram-nav-count' }, String(count))
+                  : null,
               )
             : null,
         )
