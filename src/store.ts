@@ -525,6 +525,38 @@ export class SQLiteProvider {
 
   // -- audit ---------------------------------------------------------------
 
+  /** Audit rows newest-first (I-8: every settle must be auditable). */
+  listAudit(limit: number): Array<{
+    id: string;
+    entityId: string;
+    rev: number;
+    action: string;
+    outcome: string;
+    user: string | null;
+    createdAt: number;
+  }> {
+    const rows = this.db
+      .prepare('SELECT * FROM approval_audit ORDER BY created_at DESC, id DESC LIMIT ?')
+      .all(limit) as unknown as Array<{
+      id: string;
+      entity_id: string;
+      rev: number;
+      action: string;
+      outcome: string;
+      user: string | null;
+      created_at: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      entityId: r.entity_id,
+      rev: r.rev,
+      action: r.action,
+      outcome: r.outcome,
+      user: r.user,
+      createdAt: r.created_at,
+    }));
+  }
+
   insertAudit(a: {
     entityId: string;
     rev: number;

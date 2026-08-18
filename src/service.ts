@@ -23,6 +23,7 @@ import type {
 import { InvalidInputError } from './types.js';
 import { normalize, expandSynonyms } from './normalize.js';
 import { SQLiteProvider } from './store.js';
+import type { MemoryProvider } from './provider.js';
 import { checkEntryBudget, checkSnapshotBudget } from './budget.js';
 import { detectConflicts } from './conflict.js';
 
@@ -48,12 +49,17 @@ export interface ProposeInput {
 }
 
 export class MemoryService {
-  private readonly store: SQLiteProvider;
+  private readonly store: MemoryProvider;
   readonly config: MemoryConfig;
 
-  constructor(config: MemoryConfig) {
+  /**
+   * P5 provider seam: defaults to the SQLite backend; a custom provider can
+   * be injected (tests, alternative storage). The gate logic never depends on
+   * the concrete backend.
+   */
+  constructor(config: MemoryConfig, provider?: MemoryProvider) {
     this.config = config;
-    this.store = new SQLiteProvider(config.dbPath);
+    this.store = provider ?? new SQLiteProvider(config.dbPath);
   }
 
   close(): void {
@@ -93,6 +99,11 @@ export class MemoryService {
   /** Global stable current versions for the snapshot channel (§5.2, P2). */
   listStableSnapshot() {
     return this.store.listStableSnapshot();
+  }
+
+  /** Audit trail newest-first (I-8 read surface; the store stays private). */
+  listAudit(limit: number) {
+    return this.store.listAudit(limit);
   }
 
   searchFts(query: string, limit: number) {
