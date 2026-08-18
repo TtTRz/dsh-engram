@@ -7,7 +7,7 @@
  * NEVER judges; the approver decides (design invariant).
  */
 
-import type { SQLiteProvider } from './store.js';
+import type { MemoryProvider } from './provider.js';
 import { normalize } from './normalize.js';
 
 export interface ConflictCandidates {
@@ -20,7 +20,7 @@ export interface ConflictCandidates {
 }
 
 export function detectConflicts(
-  store: SQLiteProvider,
+  store: MemoryProvider,
   nameNorm: string,
   text: string,
   workspaceKey: string | null,
@@ -37,9 +37,11 @@ export function detectConflicts(
     }
   }
 
-  // Layer 2: FTS candidates (never includes the proposing entity)
+  // Layer 2: FTS candidates scoped to the proposing partition (global +
+  // same workspace only — cross-workspace hits must never enter conflictWith,
+  // the approve cascade would supersede another workspace's pendings).
   const lexical: string[] = store
-    .searchFts(text, ftsLimit)
+    .searchFtsInScope(text, workspaceKey, ftsLimit)
     .map((r) => r.entityId)
     .filter((id) => id !== selfEntityId && !sameName.includes(id));
 

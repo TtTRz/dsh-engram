@@ -8,7 +8,7 @@
  *   propose time flags the pending row (⚠️), not a throw — the approver decides.
  */
 
-import type { SQLiteProvider } from './store.js';
+import type { MemoryProvider } from './provider.js';
 import { BudgetExceededError } from './types.js';
 
 export function checkEntryBudget(text: string, limit: number): void {
@@ -34,7 +34,7 @@ export interface SnapshotBudgetCheck {
  * snapshot — §5.4 data sources don't overlap).
  */
 export function checkSnapshotBudget(
-  store: SQLiteProvider,
+  store: MemoryProvider,
   workspaceKey: string | null,
   kind: 'stable' | 'situational',
   newText: string,
@@ -42,7 +42,12 @@ export function checkSnapshotBudget(
   replacingEntityId?: string,
 ): SnapshotBudgetCheck {
   if (kind !== 'stable') return { withinBudget: true, usedAfterApprove: 0, limit };
-  let used = store.stableTextSum(workspaceKey);
+  // The snapshot channel renders GLOBAL stable only (§5.1/§5.2). A
+  // workspace-scoped stable never enters the snapshot, so its approval can
+  // never overflow the snapshot budget — pre-checking it against a partition
+  // the renderer ignores would silently void the §3.3 warning.
+  if (workspaceKey !== null) return { withinBudget: true, usedAfterApprove: 0, limit };
+  let used = store.stableTextSum(null);
   if (replacingEntityId !== undefined) {
     const entity = store.getEntity(replacingEntityId);
     if (entity !== null && entity.kind === 'stable') {

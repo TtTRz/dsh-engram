@@ -48,6 +48,24 @@ function workspaceKeyForExec(exec: ToolExecLike | undefined): string | null {
   return null;
 }
 
+/**
+ * M-1 (N3): pending-self visibility is PER SESSION. A process-level Set would
+ * leak one session's proposals into another session's query results; the
+ * WeakMap keys on the live session object so the tracking dies with it.
+ */
+const sessionPendingsBySession = new WeakMap<object, Set<string>>();
+
+function pendingsFor(exec: ToolExecLike | undefined, sharedFallback: Set<string>): Set<string> {
+  const session = exec?.agent?.session;
+  if (session === undefined) return sharedFallback;
+  let set = sessionPendingsBySession.get(session);
+  if (set === undefined) {
+    set = new Set<string>();
+    sessionPendingsBySession.set(session, set);
+  }
+  return set;
+}
+
 function sessionOfExec(exec: ToolExecLike | undefined): SessionLike | undefined {
   const session = exec?.agent?.session;
   if (session === undefined || !Array.isArray(session.events)) return undefined;
@@ -168,7 +186,7 @@ export function registerMemoryTools(deps: ToolDeps): void {
         ...(evidence !== undefined && evidence.length > 0 ? { evidence } : {}),
       };
       const result = deps.service.propose(input, wk);
-      deps.sessionPendings.add(result.pendingId);
+      pendingsFor(exec, deps.sessionPendings).add(result.pendingId);
       return result.message;
     },
   };
@@ -192,7 +210,7 @@ export function registerMemoryTools(deps: ToolDeps): void {
     },
     execute: async (args: { query: string }, exec?: ToolExecLike) => {
       const wk = workspaceKeyForExec(exec);
-      const hits = deps.service.query(wk, args.query, deps.sessionPendings);
+      const hits = deps.service.query(wk, args.query, pendingsFor(exec, deps.sessionPendings));
       if (hits.length === 0) return '（无匹配记忆）';
       const lines = hits.map((hit) => {
         if (hit.source === 'active') {
@@ -343,7 +361,7 @@ export function registerMemoryTools(deps: ToolDeps): void {
         reason: args.reason ?? `restore to rev${args.rev}`,
       };
       const result = deps.service.propose(input, wk);
-      deps.sessionPendings.add(result.pendingId);
+      pendingsFor(exec, deps.sessionPendings).add(result.pendingId);
       return `已提交回滚提案（rev ${entity.currentRev} → ${args.rev}），待面板审批后生效。${
         result.conflictWith.length > 0 ? `冲突候选：${result.conflictWith.join(', ')}` : ''
       }`;

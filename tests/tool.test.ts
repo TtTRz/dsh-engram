@@ -112,7 +112,11 @@ describe('registerMemoryTools wire schema', () => {
     const hits = (await query.execute!({ query: '端口' }, exec)) as string;
     expect(hits).toContain('pending-self');
 
-    const hitsNoCwd = (await query.execute!({ query: '端口' }, undefined)) as string;
-    expect(hitsNoCwd).toContain('pending-self');
+    // M-1: pending-self visibility keys on the session — the same session's
+    // query sees its own proposal; a sessionless call has none.
+    const sameSession = (await query.execute!({ query: '端口' }, exec)) as string;
+    expect(sameSession).toContain('pending-self');
+    const sessionless = (await query.execute!({ query: '端口' }, undefined)) as string;
+    expect(sessionless).toContain('（无匹配记忆）');
   });
 });

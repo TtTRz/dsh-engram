@@ -508,6 +508,22 @@ export class SQLiteProvider {
     return rows.map(rowToPending);
   }
 
+  /**
+   * Run `fn` inside one SQLite transaction (BEGIN … COMMIT / ROLLBACK on
+   * throw). The service keeps gate semantics without touching the db handle.
+   */
+  transaction<T>(fn: () => T): T {
+    this.db.exec('BEGIN');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   updatePendingStatus(id: string, status: string): number {
     const result = this.db
       .prepare('UPDATE pending SET status = ? WHERE id = ? AND status = ?')
@@ -598,6 +614,40 @@ export class SQLiteProvider {
           `SELECT entity_id FROM memory_fts WHERE memory_fts MATCH ? LIMIT ?`,
         )
         .all(ftsQuery, limit) as unknown as Array<{ entity_id: string }>;
+      return rows.map((r) => ({ entityId: r.entity_id }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Scope-partitioned FTS search for conflict candidates (§3.5 layer 2):
+   * global entities plus only the SAME workspace's entities. Cross-workspace
+   * hits must never enter conflictWith — the approve cascade would otherwise
+   * supersede another workspace's pendings.
+   */
+  searchFtsInScope(
+    query: string,
+    workspaceKey: string | null,
+    limit: number,
+  ): Array<{ entityId: string }> {
+    const { terms } = normalize(query);
+    if (terms.length === 0) return [];
+    const ftsQuery = terms.map((t) => `"${t}"`).join(' OR ');
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT f.entity_id FROM memory_fts f
+           JOIN memory_entity e ON e.id = f.entity_id
+           WHERE memory_fts MATCH ?
+             AND e.state = 'active'
+             AND (
+               e.scope = 'global'
+               OR (e.scope = 'workspace' AND e.workspace_key = ?)
+             )
+           LIMIT ?`,
+        )
+        .all(ftsQuery, workspaceKey, limit) as unknown as Array<{ entity_id: string }>;
       return rows.map((r) => ({ entityId: r.entity_id }));
     } catch {
       return [];

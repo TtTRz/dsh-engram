@@ -128,27 +128,59 @@ async function pollPending(): Promise<PendingView[] | null> {
   }
 }
 
-async function post(path: string, id: string): Promise<boolean> {
+/** Settle outcome as returned by the approval API (drift / already-settled carry reasons). */
+type SettleOutcome =
+  | { ok: true }
+  | { ok: false; reason?: string; by?: string; drift?: { baseRev?: number; currentRev?: number } }
+
+async function post(path: string, id: string): Promise<SettleOutcome | null> {
   try {
     const response = await fetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    return response.ok
+    if (!response.ok) return null
+    return (await response.json()) as SettleOutcome
   } catch {
-    return false
+    return null
   }
 }
 
 /** One pending proposal row, with drift/conflict highlights and approve/deny. */
 function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => void }): React.ReactNode {
   const { pendings, onChanged } = props
+  const [notice, setNotice] = React.useState<{ id: string; text: string; warn: boolean } | null>(null)
   if (pendings === null) {
     return React.createElement('div', { className: 'engram-panel-empty' }, '加载中…')
   }
   if (pendings.length === 0) {
     return React.createElement('div', { className: 'engram-panel-empty' }, '暂无待审批的记忆。')
+  }
+  const settle = (pendingId: string, outcome: SettleOutcome | null, verb: string): void => {
+    if (outcome === null) {
+      setNotice({ id: pendingId, text: `${verb}请求失败，请重试。`, warn: true })
+      return
+    }
+    if (outcome.ok) {
+      setNotice(null)
+      onChanged()
+      return
+    }
+    if (outcome.reason === 'drift') {
+      setNotice({
+        id: pendingId,
+        text: `⚠️ 未生效：该记忆被提议后实体已更新（rev ${outcome.drift?.baseRev} → ${outcome.drift?.currentRev}）。请放弃本提案或改为推翻最新版。`,
+        warn: true,
+      })
+      return
+    }
+    if (outcome.reason === 'already-settled') {
+      setNotice({ id: pendingId, text: '该提案已被处理过，列表即将刷新。', warn: false })
+      onChanged()
+      return
+    }
+    setNotice({ id: pendingId, text: `未生效：${outcome.reason ?? '未知原因'}`, warn: true })
   }
   return React.createElement(
     'div',
@@ -191,6 +223,13 @@ function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => 
               `⚠️ 疑似与 ${pending.conflictWith?.length ?? 0} 条记忆冲突，请裁决。`,
             )
           : null,
+        notice !== null && notice.id === pending.id
+          ? React.createElement(
+              'div',
+              { className: notice.warn ? 'engram-warn' : 'engram-panel-empty' },
+              notice.text,
+            )
+          : null,
         React.createElement(
           'div',
           { className: 'engram-item-actions' },
@@ -199,8 +238,8 @@ function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => 
             {
               className: 'engram-btn approve',
               onClick: () => {
-                void post('/api/engram/approve', pending.id).then((ok) => {
-                  if (ok) onChanged()
+                void post('/api/engram/approve', pending.id).then((outcome) => {
+                  settle(pending.id, outcome, '批准')
                 })
               },
             },
@@ -211,8 +250,8 @@ function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => 
             {
               className: 'engram-btn',
               onClick: () => {
-                void post('/api/engram/deny', pending.id).then((ok) => {
-                  if (ok) onChanged()
+                void post('/api/engram/deny', pending.id).then((outcome) => {
+                  settle(pending.id, outcome, '拒绝')
                 })
               },
             },

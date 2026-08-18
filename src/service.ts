@@ -255,14 +255,12 @@ export class MemoryService {
 
     const now = Date.now();
 
-    // ③ Execute in a transaction
-    this.store.db.exec('BEGIN');
-    try {
+    // ③ Execute in a transaction (the store owns the BEGIN/COMMIT boundary)
+    return this.store.transaction(() => {
       // Optimistic lock: claim the pending row
       const claimed = this.store.updatePendingStatus(pendingId, 'approved');
       if (claimed === 0) {
-        this.store.db.exec('ROLLBACK');
-        return { ok: false, reason: 'already-settled', by: 'approve' };
+        return { ok: false as const, reason: 'already-settled' as const, by: 'approve' as const };
       }
 
       // Resolve or create the entity
@@ -271,7 +269,6 @@ export class MemoryService {
       if (entityId !== undefined) {
         const entity = this.store.getEntity(entityId);
         if (entity === null) {
-          this.store.db.exec('ROLLBACK');
           throw new InvalidInputError(`entity ${entityId} vanished`);
         }
         eid = entityId;
@@ -280,7 +277,6 @@ export class MemoryService {
         // New entity
         const { text: nameNorm } = normalize(pending.name);
         if (pending.scope === 'workspace' && wk === null) {
-          this.store.db.exec('ROLLBACK');
           throw new InvalidInputError(
             'workspace-scoped memory requires a workspace key at approve time',
           );
@@ -330,7 +326,24 @@ export class MemoryService {
       );
 
       this.store.updateEntityCurrentRev(eid, newRev, now);
-      this.store.rebuildFtsRow(eid, pending.name, pending.text);
+      if (pending.action === 'archive') {
+        // H-1: an approved archive RETIRES the entity — the version row keeps
+        // the audit trail, the entity leaves the active set and FTS (I-10).
+        this.store.archiveEntity(eid, now);
+      } else {
+        this.store.rebuildFtsRow(eid, pending.name, pending.text);
+      }
+      if (pending.action === 'merge' && pending.conflictWith !== undefined) {
+        // H-1: merge retires the absorbed entities (their absorbed texts live
+        // on in this version's chain); the system performs NO semantic text
+        // merge — the approver authored the merged text in the proposal.
+        for (const absorbedId of pending.conflictWith) {
+          const absorbed = this.store.getEntity(absorbedId);
+          if (absorbed !== null && absorbed.state === 'active' && absorbedId !== eid) {
+            this.store.archiveEntity(absorbedId, now);
+          }
+        }
+      }
 
       // ③ Conflict cascade: supersede other proposed pendings pointing at this entity
       if (pending.conflictWith !== undefined && pending.conflictWith.length > 0) {
@@ -344,12 +357,8 @@ export class MemoryService {
         }
       }
 
-      this.store.db.exec('COMMIT');
-      return { ok: true, entityId: eid, newRev };
-    } catch (error) {
-      this.store.db.exec('ROLLBACK');
-      throw error;
-    }
+      return { ok: true as const, entityId: eid, newRev };
+    });
   }
 
   // -----------------------------------------------------------------------
