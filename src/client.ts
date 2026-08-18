@@ -62,6 +62,9 @@ const CSS = [
   '.engram-item-actions { display: flex; gap: 8px; margin-top: 8px; }',
   '.engram-btn { border: 1px solid var(--dsw-alias-border-subtle); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px; }',
   '.engram-btn.approve { background: var(--dsw-alias-state-success-primary); color: var(--dsw-alias-state-success-contrast); border-color: var(--dsw-alias-state-success-primary); }',
+  '.engram-btn.danger { background: var(--dsw-alias-state-danger-primary, #dc2626); color: var(--dsw-alias-state-danger-contrast, #fff); border-color: var(--dsw-alias-state-danger-primary, #dc2626); }',
+  '.engram-confirm { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-subtle); border-radius: 6px; background: var(--dsw-alias-bg-layer-1); font-size: 13px; }',
+  '.engram-confirm-text { color: var(--dsw-alias-label-primary); }',
   '.engram-btn:disabled { opacity: 0.5; cursor: default; }',
   '.engram-nav-btn { display: flex; align-items: center; gap: 6px; cursor: pointer; background: transparent; border: none; color: var(--dsw-alias-label-secondary); padding: 7px 12px; border-radius: 8px; font-size: 13px; line-height: 20px; }',
   '.engram-nav-btn:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }',
@@ -416,6 +419,7 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
   const [archiveNotice, setArchiveNotice] = React.useState<{ id: string; text: string; warn: boolean } | null>(null)
   const [showArchived, setShowArchived] = React.useState(false)
   const [tick, setTick] = React.useState(0)
+  const [confirmingId, setConfirmingId] = React.useState<string | null>(null)
 
   const load = React.useCallback((): void => {
     void fetchMemories(showArchived).then(setRows)
@@ -512,30 +516,50 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
                 'button',
                 {
                   className: 'engram-btn',
-                  onClick: () => {
-                    const confirmed =
-                      typeof window !== 'undefined'
-                        ? window.confirm(`确定删除「${row.name}」？\n立即生效，可在「显示已归档」中恢复。`)
-                        : true
-                    if (!confirmed) return
-                    setArchiveNotice({ id: row.id, text: '正在删除…', warn: false })
-                    void requestDirectDelete(row.id).then((outcome) => {
-                  if (outcome === null || !outcome.ok) {
-                    setArchiveNotice({ id: row.id, text: '删除失败，请重试。', warn: true })
-                    return
-                  }
-                  setArchiveNotice({
-                    id: row.id,
-                    text: '已删除：在「显示已归档」中可审查或恢复。',
-                    warn: false,
-                  })
-                  setTick((t) => t + 1)
-                })
-              },
-            },
-            '删除',
+                  onClick: () => setConfirmingId(row.id),
+                },
+                '删除',
               ),
         ),
+        confirmingId === row.id
+          ? React.createElement(
+              'div',
+              { className: 'engram-confirm' },
+              React.createElement(
+                'span',
+                { className: 'engram-confirm-text' },
+                `确定删除「${row.name}」？可在「显示已归档」中恢复。`,
+              ),
+              React.createElement(
+                'button',
+                {
+                  className: 'engram-btn danger',
+                  onClick: () => {
+                    setConfirmingId(null)
+                    setArchiveNotice({ id: row.id, text: '正在删除…', warn: false })
+                    void requestDirectDelete(row.id).then((outcome) => {
+                      if (outcome === null || !outcome.ok) {
+                        setArchiveNotice({ id: row.id, text: '删除失败，请重试。', warn: true })
+                        return
+                      }
+                      setArchiveNotice({
+                        id: row.id,
+                        text: '已删除：在「显示已归档」中可审查或恢复。',
+                        warn: false,
+                      })
+                      setTick((t) => t + 1)
+                    })
+                  },
+                },
+                '确认删除',
+              ),
+              React.createElement(
+                'button',
+                { className: 'engram-btn', onClick: () => setConfirmingId(null) },
+                '取消',
+              ),
+            )
+          : null,
         archiveNotice !== null && archiveNotice.id === row.id
           ? React.createElement(
               'div',
