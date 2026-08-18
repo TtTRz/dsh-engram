@@ -31,7 +31,7 @@ function sessionFixture(): { id: string; events: Ev[] } {
       { type: 'turn/start', seq: 1 },
       mk(2, 'user', '请帮我记住部署端口'),
       mk(3, 'assistant', '好的，已提议记忆待审批'),
-      mk(4, 'user', '端口是 3080，服务名 dsh-web'),
+      mk(4, 'user', '端口是 8899，服务名 demo-api'),
       mk(5, 'assistant', '已提交待审'),
       { type: 'turn/end', seq: 6 },
       mk(7, 'user', '另外还有一条'),
@@ -58,8 +58,8 @@ describe('resolveEvidence (§4 三情形)', () => {
   });
 
   it('A: explicit excerpt without a readable log becomes the snapshot', () => {
-    const out = resolveEvidence([cite({ sessionId: 'gone', excerpt: '端口是 3080' })], undefined);
-    expect(out.evidence[0]?.excerptSnapshot).toBe('端口是 3080');
+    const out = resolveEvidence([cite({ sessionId: 'gone', excerpt: '端口是 8899' })], undefined);
+    expect(out.evidence[0]?.excerptSnapshot).toBe('端口是 8899');
     expect(out.origin).toBe('cited');
   });
 
@@ -68,7 +68,7 @@ describe('resolveEvidence (§4 三情形)', () => {
     const out = resolveEvidence([cite({ startSeq: 4, endSeq: 4 })], session);
     const snapshot = out.evidence[0]?.excerptSnapshot ?? '';
     expect(out.origin).toBe('cited');
-    expect(snapshot).toContain('[4] 端口是 3080，服务名 dsh-web');
+    expect(snapshot).toContain('[4] 端口是 8899，服务名 demo-api');
     // 1–2 adjacent surface events each side.
     expect(snapshot).toContain('[3]');
     expect(snapshot).toContain('[5]');
@@ -104,16 +104,16 @@ describe('readCitation (§4 二级承诺)', () => {
     const read = readCitation(cite({ startSeq: 2, endSeq: 4 }), session);
     expect(read?.degraded).toBe(false);
     expect(read?.text).toContain('[2] 请帮我记住部署端口');
-    expect(read?.text).toContain('[4] 端口是 3080');
+    expect(read?.text).toContain('[4] 端口是 8899');
   });
 
   it('degrades explicitly to the snapshot when the log is unreachable', () => {
     const read = readCitation(
-      cite({ sessionId: 'gone', excerptSnapshot: '[4] 端口是 3080，服务名 dsh-web' }),
+      cite({ sessionId: 'gone', excerptSnapshot: '[4] 端口是 8899，服务名 demo-api' }),
       sessionFixture(),
     );
     expect(read?.degraded).toBe(true);
-    expect(read?.text).toContain('3080');
+    expect(read?.text).toContain('8899');
   });
 
   it('returns null when neither log nor snapshot exists', () => {
@@ -266,7 +266,7 @@ describe('P4 tools (history / expand / rollback)', () => {
     const out = await propose.execute!(
       {
         name: '端口细节',
-        text: '端口 3080',
+        text: '端口 8899',
         track: 'user',
         scope: 'global',
         citations: [{ start_seq: 4, end_seq: 4 }],
@@ -275,7 +275,7 @@ describe('P4 tools (history / expand / rollback)', () => {
     );
     expect(out).toContain('待审');
     const pending = svc.listProposed().find((p) => p.name === '端口细节');
-    expect(pending?.evidence?.[0]?.excerptSnapshot).toContain('3080');
+    expect(pending?.evidence?.[0]?.excerptSnapshot).toContain('8899');
     expect(pending?.evidence?.[0]?.excerptSnapshot).toContain('[3]');
   });
 });

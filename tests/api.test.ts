@@ -156,7 +156,7 @@ describe('engram approval API', () => {
 
     const wk = 'wk-abc123'
     const r = svc.propose(
-      { name: '部署端口', text: '3080', track: 'user', scope: 'workspace' },
+      { name: '部署端口', text: '8899', track: 'user', scope: 'workspace' },
       wk,
     )
     const approveRoute = web.routes.find((x) => x.path === '/api/engram/approve')!

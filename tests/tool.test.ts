@@ -99,7 +99,7 @@ describe('registerMemoryTools wire schema', () => {
 
     const propose = defs.find((d) => d.name === 'memory_propose')!;
     const result = (await propose.execute!(
-      { name: '端口', text: '3080', track: 'user', scope: 'workspace' },
+      { name: '端口', text: '8899', track: 'user', scope: 'workspace' },
       exec,
     )) as string;
     expect(result).toContain('待审');
