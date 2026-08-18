@@ -315,10 +315,25 @@ async function fetchChain(id: string): Promise<ChainResponse | null> {
   }
 }
 
-function MemoryList(): React.ReactNode {
+async function requestArchive(id: string): Promise<{ ok: boolean; message?: string } | null> {
+  try {
+    const response = await fetch('/api/engram/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!response.ok) return null
+    return (await response.json()) as { ok: boolean; message?: string }
+  } catch {
+    return null
+  }
+}
+
+function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
   const [rows, setRows] = React.useState<MemoryRow[] | null>(null)
   const [openChain, setOpenChain] = React.useState<string | null>(null)
   const [chain, setChain] = React.useState<ChainResponse | null>(null)
+  const [archiveNotice, setArchiveNotice] = React.useState<{ id: string; text: string; warn: boolean } | null>(null)
 
   const load = (): void => {
     void fetchMemories().then(setRows)
@@ -371,7 +386,36 @@ function MemoryList(): React.ReactNode {
             { className: 'engram-btn', onClick: () => toggleChain(row.id) },
             openChain === row.id ? '收起历史' : '查看历史',
           ),
+          React.createElement(
+            'button',
+            {
+              className: 'engram-btn',
+              onClick: () => {
+                setArchiveNotice({ id: row.id, text: '正在提交删除提案…', warn: false })
+                void requestArchive(row.id).then((outcome) => {
+                  if (outcome === null || !outcome.ok) {
+                    setArchiveNotice({ id: row.id, text: '提交删除提案失败，请重试。', warn: true })
+                    return
+                  }
+                  setArchiveNotice({
+                    id: row.id,
+                    text: '已提交删除提案：请到「待审批」中批准，批准后该记忆将从列表移除（版本链留痕）。',
+                    warn: false,
+                  })
+                  props.onProposed?.()
+                })
+              },
+            },
+            '删除',
+          ),
         ),
+        archiveNotice !== null && archiveNotice.id === row.id
+          ? React.createElement(
+              'div',
+              { className: archiveNotice.warn ? 'engram-warn' : 'engram-meta' },
+              archiveNotice.text,
+            )
+          : null,
         openChain === row.id
           ? chain === null
             ? React.createElement('div', { className: 'engram-meta' }, '加载版本链…')
@@ -461,7 +505,7 @@ export function apply(ctx: {
                   pendings: store.get().pendings,
                   onChanged: refreshAfter,
                 })
-              : React.createElement(MemoryList),
+              : React.createElement(MemoryList, { onProposed: refresh }),
           )
         }
         return React.createElement(Section)

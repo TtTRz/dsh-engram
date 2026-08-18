@@ -111,6 +111,33 @@ export class MemoryService {
     return this.store.listAllActive();
   }
 
+  /**
+   * Panel-initiated delete: files an ARCHIVE proposal for the exact entity
+   * (I-2 — deletion is a write and must clear the approval gate; the version
+   * chain keeps the audit trail). Returns the pending id for the caller to
+   * surface. Throws when the entity does not exist or is already retired.
+   */
+  proposeArchive(entityId: string, reason?: string): { pendingId: string; message: string } {
+    const entity = this.store.getEntity(entityId);
+    if (entity === null) throw new InvalidInputError(`no such entity: ${entityId}`);
+    if (entity.state !== 'active') throw new InvalidInputError(`entity already ${entity.state}`);
+    const current = this.store.getVersion(entityId, entity.currentRev);
+    const trace = `面板删除（原正文：${(current?.text ?? '').slice(0, 100)}）`;
+    const result = this.propose(
+      {
+        name: entity.name,
+        text: trace,
+        track: entity.track,
+        scope: entity.scope,
+        action: 'archive',
+        reason: reason ?? 'panel delete',
+      },
+      entity.workspaceKey ?? null,
+      entityId,
+    );
+    return { pendingId: result.pendingId, message: '已提交删除提案，需在待审批中批准后生效。' };
+  }
+
   searchFts(query: string, limit: number) {
     return this.store.searchFts(query, limit);
   }
@@ -130,7 +157,7 @@ export class MemoryService {
   // Propose (§3.1)
   // -----------------------------------------------------------------------
 
-  propose(input: ProposeInput, workspaceKey: string | null): ProposeResult {
+  propose(input: ProposeInput, workspaceKey: string | null, exactEntityId?: string): ProposeResult {
     const name = input.name.trim();
     if (name.length === 0) throw new InvalidInputError('name must not be empty');
     if (input.text.trim().length === 0) throw new InvalidInputError('text must not be empty');
@@ -142,8 +169,13 @@ export class MemoryService {
     const kind = this.deriveKind(input.track, input.scope, input.kindSuggestion);
     const action = input.action ?? 'create';
 
-    // Find existing entity (for refine/contradict or same-name create)
-    const existing = this.store.findEntityByName(nameNorm, workspaceKey);
+    // Find existing entity (for refine/contradict or same-name create). An
+    // exact id (panel-initiated archive) bypasses name resolution so a
+    // same-name coexisting entity can never be mistaken for the clicked one.
+    const existing =
+      exactEntityId !== undefined
+        ? this.store.getEntity(exactEntityId)
+        : this.store.findEntityByName(nameNorm, workspaceKey);
     const entityId = existing?.id;
     const baseRev = existing?.currentRev;
 

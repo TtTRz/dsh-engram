@@ -169,6 +169,41 @@ describe('engram approval API', () => {
     expect(payload.chain[0]?.kind).toBe('create')
   })
 
+  it('POST /api/engram/archive files an exact-entity delete proposal; approval retires it', async () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
+    const web = fakeWebServer()
+    registerEngramRoutes(makeCtx(web), svc)
+
+    // Two active entities; the delete must retire exactly the clicked one.
+    // (Same-name coexistence is not reachable through propose — the panel's
+    // "keep independent" choice is future work — so distinct names here.)
+    const target = svc.propose({ name: '端口', text: '甲实体', track: 'user', scope: 'global' }, null)
+    svc.approve(target.pendingId, 'a')
+    const other = svc.propose({ name: '别名', text: '乙实体', track: 'user', scope: 'global' }, null)
+    svc.approve(other.pendingId, 'a')
+    const entities = svc.listAllActive()
+    expect(entities).toHaveLength(2)
+    const clicked = entities.find((row) => row.text === '甲实体')!
+
+    // Panel delete on 甲: the proposal must attach to the clicked entity.
+    const archiveRoute = web.routes.find((x) => x.path === '/api/engram/archive')!
+    const { res, body } = makeRes()
+    await archiveRoute.handler(makeReq('POST', { id: clicked.id }), res)
+    const filed = body() as { ok: boolean; pendingId: string }
+    expect(filed.ok).toBe(true)
+
+    const pendings = svc.listProposed()
+    expect(pendings).toHaveLength(1)
+    expect(pendings[0]?.action).toBe('archive')
+    expect(pendings[0]?.entityId).toBe(clicked.id)
+
+    // Approving the archive retires exactly the clicked entity.
+    svc.approve(filed.pendingId, 'deleter')
+    const remaining = svc.listAllActive()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]?.id).not.toBe(clicked.id)
+  })
+
   it('approve reports drift when the entity moved past base_rev', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
