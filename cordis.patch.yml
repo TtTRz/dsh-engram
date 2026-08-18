@@ -1,10 +1,10 @@
 # dsh-engram bundle: insert one plugin row (tools + approval seam consumer).
 #
-# dbPath persists by default under the harness home (~/.dsh/engram.db), so
-# approved memories survive restarts. Override with ENGRAM_DB_PATH; unit tests
-# construct the service with ':memory:' directly and never go through this patch.
+# All settings have schema defaults (see src/index.ts Config) and render in
+# the web UI's plugin settings form; override any of them here per profile.
+# The database defaults to ~/.dsh/engram.db (or ENGRAM_DB_PATH), so approved
+# memories survive restarts. Unit tests construct the service with
+# ':memory:' directly and never go through this patch.
 - insert:
     - id: memory
       name: dsh-engram
-      config:
-        dbPath: !!js process.env.ENGRAM_DB_PATH ?? (process.env.HOME ?? '/root') + '/.dsh/engram.db'

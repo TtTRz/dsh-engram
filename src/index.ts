@@ -7,6 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis';
+import z from '@deepseek-ai/schemastery';
 import { DEFAULT_CONFIG } from './types.js';
 import type { MemoryConfig } from './types.js';
 import { MemoryService } from './service.js';
@@ -29,6 +30,37 @@ export interface EngramConfig {
   recallMax?: number;
   recallBudget?: number;
 }
+
+/**
+ * Config schema (schemastery) — drives the plugin's settings form in the web
+ * UI. Every field mirrors EngramConfig; defaults live in DEFAULT_CONFIG.
+ */
+export const Config = z.object({
+  dbPath: z
+    .string()
+    .default(process.env.ENGRAM_DB_PATH ?? (process.env.HOME ?? '/root') + '/.dsh/engram.db')
+    .description('SQLite 数据库路径（:memory: 为内存库，重启即失）。'),
+  snapshotBudget: z
+    .natural()
+    .default(DEFAULT_CONFIG.snapshotBudget)
+    .description('快照通道硬上限：global stable 当前版正文总字数（§3.3）。'),
+  entryBudget: z
+    .natural()
+    .default(DEFAULT_CONFIG.entryBudget)
+    .description('单条记忆正文上限（I-4，超出抛错绝不截断）。'),
+  synonymGroups: z
+    .array(z.array(z.string()))
+    .default(DEFAULT_CONFIG.synonymGroups)
+    .description('召回检索的种子同义词组（X3 OR 展开），如 [["端口","port"],["部署","发布"]]。'),
+  recallMax: z
+    .natural()
+    .default(DEFAULT_CONFIG.recallMax)
+    .description('召回注入每步最多条数（§5.3）。'),
+  recallBudget: z
+    .natural()
+    .default(DEFAULT_CONFIG.recallBudget)
+    .description('召回注入每步最大字符数（§5.3）。'),
+});
 
 export function apply(ctx: Context, config?: EngramConfig): void {
   const resolved: MemoryConfig = {

@@ -55,7 +55,9 @@
     "url": "https://github.com/TtTRz/dsh-engram/issues"
   },
   "homepage": "https://github.com/TtTRz/dsh-engram#readme",
-  "dependencies": {},
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "react": "^18.2.0"
