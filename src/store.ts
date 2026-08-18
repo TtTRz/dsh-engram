@@ -416,10 +416,26 @@ export class SQLiteProvider {
       .all(entityId) as unknown as VersionRow[];
     const versions = rows.map(rowToVersion);
     if (versions.length <= 5) return versions;
-    // Older than the 5-version window → synthesize a folded node
-    const [current, ...history] = [...versions].reverse();
-    const window = history.slice(0, 4).reverse(); // 4 most recent before current
-    const foldedVersions = versions.slice(0, versions.length - 5);
+    // §2.3 bounded chain: current + up to 4 foldable history rows; contradict
+    // and restore rows are always kept verbatim and squeeze refines out of
+    // the window (优先逐版保留); refines fold first.
+    const [current, ...histDesc] = [...versions].reverse();
+    const keep: MemoryVersion[] = [];
+    let foldableKept = 0;
+    for (const version of histDesc) {
+      const isAnchor = version.kind === 'contradict' || version.kind === 'restore';
+      if (isAnchor) {
+        keep.push(version);
+      } else if (foldableKept < 4) {
+        keep.push(version);
+        foldableKept += 1;
+      }
+    }
+    const keptRevs = new Set(keep.map((v) => v.rev));
+    const foldedVersions = versions.filter((v) => v !== current && !keptRevs.has(v.rev));
+    if (foldedVersions.length === 0) {
+      return [...keep].reverse().concat(current as MemoryVersion);
+    }
     const stats: Record<string, number> = {};
     for (const v of foldedVersions) stats[v.kind] = (stats[v.kind] ?? 0) + 1;
     const citations = foldedVersions.flatMap((v) => v.evidence);
@@ -434,10 +450,11 @@ export class SQLiteProvider {
         kind: v.kind,
         summary: v.text.slice(0, 80),
       })),
+      // Pointers and snapshots are never dropped by folding (X5).
       citations,
       foldedAt: Date.now(),
     };
-    return [folded, ...window, current!];
+    return [folded, ...[...keep].reverse(), current as MemoryVersion];
   }
 
   // -- pending ---------------------------------------------------------------

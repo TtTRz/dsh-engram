@@ -42,7 +42,11 @@ function captureDefs(): RegisteredDef[] {
 describe('registerMemoryTools wire schema', () => {
   it('registers memory_propose and memory_query', () => {
     const names = captureDefs().map((d) => d.name);
-    expect(names).toEqual(['memory_propose', 'memory_query']);
+    expect(names).toContain('memory_propose');
+    expect(names).toContain('memory_query');
+    expect(names).toContain('memory_history');
+    expect(names).toContain('memory_expand');
+    expect(names).toContain('memory_rollback');
   });
 
   it('compiles parameters to an object-rooted JSON Schema', () => {

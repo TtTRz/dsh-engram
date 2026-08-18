@@ -26,6 +26,15 @@ import { SQLiteProvider } from './store.js';
 import { checkEntryBudget, checkSnapshotBudget } from './budget.js';
 import { detectConflicts } from './conflict.js';
 
+/** True when at least one citation carries verbatim evidence (§4 A/B). */
+function hasExcerpt(citations: Citation[]): boolean {
+  return citations.some(
+    (citation) =>
+      (citation.excerpt !== undefined && citation.excerpt.length > 0) ||
+      (citation.excerptSnapshot !== undefined && citation.excerptSnapshot.length > 0),
+  );
+}
+
 export interface ProposeInput {
   name: string;
   text: string;
@@ -66,6 +75,11 @@ export class MemoryService {
 
   getVersion(entityId: string, rev: number) {
     return this.store.getVersion(entityId, rev);
+  }
+
+  /** Bounded version chain with a synthesized folded head (§2.3, P4). */
+  getVersionChain(entityId: string) {
+    return this.store.getVersionChain(entityId);
   }
 
   findEntityByName(nameNorm: string, workspaceKey: string | null) {
@@ -136,9 +150,11 @@ export class MemoryService {
       action !== 'create' ? entityId : undefined,
     );
 
-    // Evidence origin: heuristic if no citations provided (§4 情形 C)
+    // Evidence origin (§4 三情形): cited only when some citation carries an
+    // excerpt (A) or an excerptSnapshot (B read-back); bare pointers from an
+    // unreachable log stay heuristic (C — no verbatim evidence).
     const origin: 'cited' | 'heuristic' =
-      input.evidence !== undefined && input.evidence.length > 0 ? 'cited' : 'heuristic';
+      input.evidence !== undefined && hasExcerpt(input.evidence) ? 'cited' : 'heuristic';
 
     const pendingId = this.store.insertPending({
       ...(entityId !== undefined ? { entityId } : {}),
@@ -274,9 +290,9 @@ export class MemoryService {
         newRev = 1;
       }
 
-      // Evidence origin
+      // Evidence origin (§4 三情形): same honest rule as propose.
       const origin: 'cited' | 'heuristic' =
-        pending.evidence !== undefined && pending.evidence.length > 0 ? 'cited' : 'heuristic';
+        pending.evidence !== undefined && hasExcerpt(pending.evidence) ? 'cited' : 'heuristic';
 
       // Insert the version
       const approvalId = this.store.insertAudit({
