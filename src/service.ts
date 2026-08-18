@@ -106,6 +106,11 @@ export class MemoryService {
     return this.store.listAudit(limit);
   }
 
+  /** Every active memory with its current text — the panel browse surface. */
+  listAllActive() {
+    return this.store.listAllActive();
+  }
+
   searchFts(query: string, limit: number) {
     return this.store.searchFts(query, limit);
   }

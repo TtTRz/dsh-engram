@@ -133,6 +133,78 @@ export function registerEngramRoutes(
       disposers.push(
         webServer.register({
           kind: 'exact',
+          path: '/api/engram/memories',
+          handler: (_req, res) => {
+            const now = Date.now();
+            const memories = service.listAllActive().map((row) => ({
+              id: row.id,
+              name: row.name,
+              scope: row.scope,
+              kind: row.kind,
+              track: row.track,
+              workspaceKey: row.workspaceKey,
+              rev: row.currentRev,
+              text: row.text,
+              updatedAt: row.updatedAt,
+              expired: row.validUntil !== null && row.validUntil < now,
+            }));
+            send(res, 200, { memories });
+          },
+        }),
+      )
+
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
+          path: '/api/engram/chain',
+          handler: (req, res) => {
+            const url = new URL(req.url ?? '/', 'http://localhost');
+            const id = url.searchParams.get('id') ?? '';
+            if (id.length === 0) {
+              send(res, 400, { ok: false, error: 'id is required' });
+              return;
+            }
+            const entity = service.getEntity(id);
+            if (entity === null) {
+              send(res, 404, { ok: false, error: 'no such entity' });
+              return;
+            }
+            const chain = service.getVersionChain(id).map((node) => {
+              if ('type' in node && node.type === 'folded') {
+                return {
+                  type: 'folded' as const,
+                  rangeFrom: node.rangeFrom,
+                  rangeTo: node.rangeTo,
+                  stats: node.stats,
+                  summaries: node.summaries,
+                  citationCount: node.citations.length,
+                };
+              }
+              return {
+                type: 'version' as const,
+                rev: node.rev,
+                kind: node.kind,
+                text: node.text,
+                origin: node.origin,
+                createdAt: node.createdAt,
+                evidenceCount: node.evidence.length,
+              };
+            });
+            send(res, 200, {
+              id,
+              name: entity.name,
+              scope: entity.scope,
+              kind: entity.kind,
+              currentRev: entity.currentRev,
+              chain,
+            });
+          },
+        }),
+      )
+
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
           path: '/api/engram/approve',
           handler: async (req, res) => {
             try {

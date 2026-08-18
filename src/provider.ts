@@ -63,6 +63,7 @@ export interface MemoryProvider {
   archiveEntity(id: string, now: number): void;
   listActiveByScope(workspaceKey: string | null, kind: string): import('./types.js').MemoryEntity[];
   listActiveByNameNorm(nameNorm: string): import('./types.js').MemoryEntity[];
+  listAllActive(): ReturnType<SQLiteProvider['listAllActive']>;
   listStableSnapshot(): StableSnapshotRow[];
 
   insertVersion(v: InsertVersion, now: number): void;

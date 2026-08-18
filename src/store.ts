@@ -357,6 +357,57 @@ export class SQLiteProvider {
   }
 
   /**
+   * Every active entity with its current text, newest first — the browse
+   * surface for the panel's "existing memories" tab (read-only).
+   */
+  listAllActive(): Array<{
+    id: string;
+    name: string;
+    scope: 'global' | 'workspace';
+    kind: 'stable' | 'situational';
+    track: string;
+    workspaceKey: string | null;
+    currentRev: number;
+    text: string;
+    validUntil: number | null;
+    updatedAt: number;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT e.id, e.name, e.scope, e.kind, e.track, e.workspace_key,
+                e.current_rev, e.valid_until, e.updated_at, v.text
+         FROM memory_entity e
+         JOIN memory_version v ON v.entity_id = e.id AND v.rev = e.current_rev
+         WHERE e.state = 'active'
+         ORDER BY e.updated_at DESC`,
+      )
+      .all() as unknown as Array<{
+      id: string;
+      name: string;
+      scope: 'global' | 'workspace';
+      kind: 'stable' | 'situational';
+      track: string;
+      workspace_key: string | null;
+      current_rev: number;
+      valid_until: number | null;
+      updated_at: number;
+      text: string;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      scope: r.scope,
+      kind: r.kind,
+      track: r.track,
+      workspaceKey: r.workspace_key,
+      currentRev: r.current_rev,
+      text: r.text,
+      validUntil: r.valid_until,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  /**
    * Snapshot channel rows (§5.1/§5.2): global stable current versions,
    * newest update first. Workspace-scoped stable entries never enter the
    * snapshot — they go to the recall channel (P3).

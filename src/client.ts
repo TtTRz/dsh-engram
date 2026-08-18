@@ -68,6 +68,13 @@ const CSS = [
   '.engram-nav-label { display: flex; align-items: center; gap: 6px; }',
   '.engram-nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-primary); font-size: 11px; font-weight: 600; line-height: 1; }',
   '.engram-nav-icon { display: inline-flex; flex: none; color: inherit; }',
+  '.engram-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--dsw-alias-border-subtle); margin-bottom: 10px; }',
+  '.engram-tab { border: none; background: transparent; color: var(--dsw-alias-label-secondary); padding: 6px 12px; cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; }',
+  '.engram-tab.active { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-label-primary); }',
+  '.engram-badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 1px 6px; font-size: 11px; background: var(--dsw-alias-fill-secondary); color: var(--dsw-alias-label-secondary); margin-right: 6px; }',
+  '.engram-meta { font-size: 12px; color: var(--dsw-alias-label-secondary); margin: 2px 0; }',
+  '.engram-chain { margin: 6px 0 0 0; padding: 8px 10px; background: var(--dsw-alias-bg-layer-1); border-radius: 6px; font-size: 12px; }',
+  '.engram-chain-item { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }',
 ].join('\n')
 
 /** Lucide "bookmark" glyph — the memory marker, stroked in currentColor so it follows the nav button's hover/pending color. */
@@ -263,6 +270,130 @@ function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => 
   )
 }
 
+/** One active memory row of the browse tab, with an expandable version chain. */
+interface MemoryRow {
+  id: string
+  name: string
+  scope: 'global' | 'workspace'
+  kind: 'stable' | 'situational'
+  track: string
+  workspaceKey: string | null
+  rev: number
+  text: string
+  updatedAt: number
+  expired: boolean
+}
+
+interface ChainResponse {
+  id: string
+  name: string
+  currentRev: number
+  chain: Array<
+    | { type: 'folded'; rangeFrom: number; rangeTo: number; stats: Record<string, number>; summaries: Array<{ rev: number; kind: string; summary: string }>; citationCount: number }
+    | { type: 'version'; rev: number; kind: string; text: string; origin: string; createdAt: number; evidenceCount: number }
+  >
+}
+
+async function fetchMemories(): Promise<MemoryRow[] | null> {
+  try {
+    const response = await fetch('/api/engram/memories')
+    if (!response.ok) return null
+    const payload = (await response.json()) as { memories: MemoryRow[] }
+    return payload.memories
+  } catch {
+    return null
+  }
+}
+
+async function fetchChain(id: string): Promise<ChainResponse | null> {
+  try {
+    const response = await fetch(`/api/engram/chain?id=${encodeURIComponent(id)}`)
+    if (!response.ok) return null
+    return (await response.json()) as ChainResponse
+  } catch {
+    return null
+  }
+}
+
+function MemoryList(): React.ReactNode {
+  const [rows, setRows] = React.useState<MemoryRow[] | null>(null)
+  const [openChain, setOpenChain] = React.useState<string | null>(null)
+  const [chain, setChain] = React.useState<ChainResponse | null>(null)
+
+  const load = (): void => {
+    void fetchMemories().then(setRows)
+  }
+  React.useEffect(load, [])
+
+  if (rows === null) {
+    return React.createElement('div', { className: 'engram-panel-empty' }, '加载中…')
+  }
+  if (rows.length === 0) {
+    return React.createElement('div', { className: 'engram-panel-empty' }, '还没有已批准的记忆。')
+  }
+
+  const toggleChain = (id: string): void => {
+    if (openChain === id) {
+      setOpenChain(null)
+      setChain(null)
+      return
+    }
+    setOpenChain(id)
+    setChain(null)
+    void fetchChain(id).then(setChain)
+  }
+
+  return React.createElement(
+    'div',
+    { className: 'engram-panel' },
+    rows.map((row) =>
+      React.createElement(
+        'div',
+        { key: row.id, className: 'engram-item' },
+        React.createElement(
+          'div',
+          { className: 'engram-item-title' },
+          React.createElement('span', { className: 'engram-badge' }, `${row.scope}/${row.kind}`),
+          row.expired ? React.createElement('span', { className: 'engram-badge' }, '已过期·需核实') : null,
+          row.name,
+        ),
+        React.createElement('div', { className: 'engram-item-text' }, row.text),
+        React.createElement(
+          'div',
+          { className: 'engram-meta' },
+          `rev ${row.rev} · ${row.track === 'user' ? '用户提供' : '模型总结'} · 更新于 ${new Date(row.updatedAt).toLocaleString()}${row.workspaceKey !== null ? ` · 仓库 ${row.workspaceKey.slice(0, 8)}` : ''}`,
+        ),
+        React.createElement(
+          'div',
+          { className: 'engram-item-actions' },
+          React.createElement(
+            'button',
+            { className: 'engram-btn', onClick: () => toggleChain(row.id) },
+            openChain === row.id ? '收起历史' : '查看历史',
+          ),
+        ),
+        openChain === row.id
+          ? chain === null
+            ? React.createElement('div', { className: 'engram-meta' }, '加载版本链…')
+            : React.createElement(
+                'div',
+                { className: 'engram-chain' },
+                chain.chain.map((node, index) =>
+                  React.createElement(
+                    'div',
+                    { key: index, className: 'engram-chain-item' },
+                    node.type === 'folded'
+                      ? `[折叠 rev${node.rangeFrom}–${node.rangeTo}] ${Object.entries(node.stats).map(([k, v]) => `${k}×${v}`).join(' ')} · ${node.citationCount} 条依据指针\n${node.summaries.map((x) => `rev${x.rev}: ${x.summary}`).join(' / ')}`
+                      : `rev${node.rev} [${node.kind}]${node.rev === chain.currentRev ? '（当前）' : ''} · 依据 ${node.evidenceCount} 条（origin=${node.origin}）\n${node.text}`,
+                  ),
+                ),
+              )
+          : null,
+      ),
+    ),
+  )
+}
+
 export function apply(ctx: {
   get(name: 'slots'): SlotsService | undefined
   get(name: 'timer'): TimerService | undefined
@@ -301,15 +432,37 @@ export function apply(ctx: {
       () => {
         function Section(): React.ReactNode {
           useStore()
+          const [tab, setTab] = React.useState<'pending' | 'memories'>('pending')
           React.useEffect(() => {
             void refresh()
             if (timer === undefined) return undefined
             return timer.interval(() => void refresh(), 5000)
           }, [])
-          return React.createElement(ApprovalList, {
-            pendings: store.get().pendings,
-            onChanged: refreshAfter,
-          })
+          const pendingCount = store.get().pendings?.length ?? 0
+          return React.createElement(
+            'div',
+            null,
+            React.createElement(
+              'div',
+              { className: 'engram-tabs' },
+              React.createElement(
+                'button',
+                { className: `engram-tab${tab === 'pending' ? ' active' : ''}`, onClick: () => setTab('pending') },
+                `待审批（${pendingCount}）`,
+              ),
+              React.createElement(
+                'button',
+                { className: `engram-tab${tab === 'memories' ? ' active' : ''}`, onClick: () => setTab('memories') },
+                '已有记忆',
+              ),
+            ),
+            tab === 'pending'
+              ? React.createElement(ApprovalList, {
+                  pendings: store.get().pendings,
+                  onChanged: refreshAfter,
+                })
+              : React.createElement(MemoryList),
+          )
         }
         return React.createElement(Section)
       },

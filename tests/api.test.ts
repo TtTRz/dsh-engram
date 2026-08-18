@@ -124,6 +124,51 @@ describe('engram approval API', () => {
     expect(svc.listActiveByScope(null, 'stable')).toHaveLength(0)
   })
 
+  it('GET /api/engram/memories lists approved memories with metadata', async () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
+    const web = fakeWebServer()
+    registerEngramRoutes(makeCtx(web), svc)
+
+    const r1 = svc.propose({ name: '端口', text: '8899', track: 'user', scope: 'global' }, null)
+    svc.approve(r1.pendingId, 'a')
+    const r2 = svc.propose({ name: '过期', text: '旧值', track: 'agent', scope: 'global', validUntil: Date.now() - 1000 }, null)
+    svc.approve(r2.pendingId, 'a')
+
+    const listRoute = web.routes.find((x) => x.path === '/api/engram/memories')!
+    const { res, body } = makeRes()
+    await listRoute.handler(makeReq('GET'), res)
+    const payload = body() as { memories: Array<{ name: string; expired: boolean; rev: number; scope: string; kind: string }> }
+    expect(payload.memories).toHaveLength(2)
+    const port = payload.memories.find((m) => m.name === '端口')
+    expect(port?.rev).toBe(1)
+    expect(port?.expired).toBe(false)
+    expect(port?.scope).toBe('global')
+    expect(port?.kind).toBe('stable')
+    const stale = payload.memories.find((m) => m.name === '过期')
+    expect(stale?.expired).toBe(true)
+  })
+
+  it('GET /api/engram/chain returns the bounded version chain', async () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
+    const web = fakeWebServer()
+    registerEngramRoutes(makeCtx(web), svc)
+
+    const r1 = svc.propose({ name: '端口', text: 'v1', track: 'user', scope: 'global' }, null)
+    svc.approve(r1.pendingId, 'a')
+    const entity = svc.listAllActive()[0]!
+
+    const chainRoute = web.routes.find((x) => x.path === '/api/engram/chain')!
+    const req = makeReq('GET') as IncomingMessage & { url: string }
+    ;(req as unknown as { url: string }).url = `/api/engram/chain?id=${entity.id}`
+    const { res, body } = makeRes()
+    await chainRoute.handler(req, res)
+    const payload = body() as { chain: Array<{ type: string; rev?: number; kind?: string }> }
+    expect(payload.chain).toHaveLength(1)
+    expect(payload.chain[0]?.type).toBe('version')
+    expect(payload.chain[0]?.rev).toBe(1)
+    expect(payload.chain[0]?.kind).toBe('create')
+  })
+
   it('approve reports drift when the entity moved past base_rev', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()
