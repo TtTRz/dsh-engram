@@ -111,6 +111,37 @@ describe('§3.5 three-choice resolution (panel modes)', () => {
   });
 });
 
+describe('panel direct delete (human is the gate)', () => {
+  it('deleteNow archives immediately with audit trail and stays restorable', () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' });
+    const created = svc.propose({ name: '直删', text: '内容', track: 'user', scope: 'global' }, null);
+    svc.approve(created.pendingId, 'a');
+    const id = svc.listAllActive()[0]!.id;
+
+    // Direct: no pending round-trip.
+    expect(svc.deleteNow(id, 'operator')).toEqual({ ok: true });
+    expect(svc.listActiveByScope(null, 'stable')).toHaveLength(0);
+    expect(svc.listProposed()).toHaveLength(0); // nothing queued
+
+    // Audit + chain kept; restore still works through the gate.
+    const entity = svc.getEntity(id);
+    expect(entity?.state).toBe('archived');
+    expect(svc.getVersion(id, entity!.currentRev)?.kind).toBe('archive');
+    const restore = svc.proposeRestore(id, 'undo');
+    svc.approve(restore.pendingId, 'operator');
+    expect(svc.listActiveByScope(null, 'stable')).toHaveLength(1);
+  });
+
+  it('deleteNow refuses non-active entities', () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' });
+    const created = svc.propose({ name: 'x', text: 'y', track: 'user', scope: 'global' }, null);
+    svc.approve(created.pendingId, 'a');
+    const id = svc.listAllActive()[0]!.id;
+    svc.deleteNow(id);
+    expect(() => svc.deleteNow(id)).toThrow(/already archived/);
+  });
+});
+
 describe('H-2: conflict candidates stay inside the proposing partition', () => {
   it('a workspace proposal never lists another workspace\'s entity as candidate', () => {
     const dbPath = `${os.tmpdir()}/engram-h2-${Date.now()}-${Math.random().toString(36).slice(2)}.db`;

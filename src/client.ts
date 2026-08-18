@@ -346,6 +346,20 @@ interface ChainResponse {
   >
 }
 
+async function requestDirectDelete(id: string): Promise<{ ok: boolean; error?: string } | null> {
+  try {
+    const response = await fetch('/api/engram/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!response.ok) return null
+    return (await response.json()) as { ok: boolean; error?: string }
+  } catch {
+    return null
+  }
+}
+
 async function requestRestore(id: string): Promise<{ ok: boolean; message?: string } | null> {
   try {
     const response = await fetch('/api/engram/restore', {
@@ -499,18 +513,22 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
                 {
                   className: 'engram-btn',
                   onClick: () => {
-                    setArchiveNotice({ id: row.id, text: '正在提交删除提案…', warn: false })
-                    void requestArchive(row.id).then((outcome) => {
+                    const confirmed =
+                      typeof window !== 'undefined'
+                        ? window.confirm(`确定删除「${row.name}」？\n立即生效，可在「显示已归档」中恢复。`)
+                        : true
+                    if (!confirmed) return
+                    setArchiveNotice({ id: row.id, text: '正在删除…', warn: false })
+                    void requestDirectDelete(row.id).then((outcome) => {
                   if (outcome === null || !outcome.ok) {
-                    setArchiveNotice({ id: row.id, text: '提交删除提案失败，请重试。', warn: true })
+                    setArchiveNotice({ id: row.id, text: '删除失败，请重试。', warn: true })
                     return
                   }
                   setArchiveNotice({
                     id: row.id,
-                    text: '已提交删除提案：请到「待审批」中批准，批准后该记忆将从列表移除（版本链留痕）。',
+                    text: '已删除：在「显示已归档」中可审查或恢复。',
                     warn: false,
                   })
-                  props.onProposed?.()
                   setTick((t) => t + 1)
                 })
               },

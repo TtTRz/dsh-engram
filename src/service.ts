@@ -112,6 +112,47 @@ export class MemoryService {
   }
 
   /**
+   * Panel-initiated DIRECT delete (human action): archives the entity
+   * immediately — no pending round-trip, the human IS the gate. Keeps every
+   * safeguard: an archive version row lands on the chain, FTS is cleaned
+   * (I-10), and proposeRestore can bring it back. Model-initiated archives
+   * still MUST clear the approval gate (I-2 guards the model, not the human).
+   */
+  deleteNow(entityId: string, user?: string): { ok: true } {
+    const entity = this.store.getEntity(entityId);
+    if (entity === null) throw new InvalidInputError(`no such entity: ${entityId}`);
+    if (entity.state !== 'active') throw new InvalidInputError(`entity already ${entity.state}`);
+    const now = Date.now();
+    const trace = `面板直接删除（原正文：${(this.store.getVersion(entityId, entity.currentRev)?.text ?? '').slice(0, 100)}）`;
+    return this.store.transaction(() => {
+      const approvalId = this.store.insertAudit({
+        entityId,
+        rev: entity.currentRev + 1,
+        action: 'approve',
+        payload: JSON.stringify({ direct: true, text: trace.slice(0, 200), user }),
+        outcome: 'allowed',
+        ...(user !== undefined ? { user } : {}),
+      });
+      this.store.insertVersion(
+        {
+          entityId,
+          rev: entity.currentRev + 1,
+          kind: 'archive',
+          text: trace,
+          reason: user ?? 'panel direct delete',
+          evidence: [],
+          origin: 'heuristic',
+          ...(approvalId !== undefined ? { approvalId } : {}),
+        },
+        now,
+      );
+      this.store.updateEntityCurrentRev(entityId, entity.currentRev + 1, now);
+      this.store.archiveEntity(entityId, now);
+      return { ok: true as const };
+    });
+  }
+
+  /**
    * Panel-initiated restore: files a RESTORE proposal reviving an archived
    * entity to its last current text. Same gate as every write (I-2);
    * approval re-activates the entity and rebuilds its FTS row.

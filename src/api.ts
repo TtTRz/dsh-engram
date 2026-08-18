@@ -255,6 +255,28 @@ export function registerEngramRoutes(
       disposers.push(
         webServer.register({
           kind: 'exact',
+          path: '/api/engram/delete',
+          handler: async (req, res) => {
+            try {
+              const body = await readJsonBody(req)
+              const id = body.id
+              if (typeof id !== 'string' || id.length === 0) {
+                send(res, 400, { ok: false, error: 'id is required' })
+                return
+              }
+              const user = typeof body.user === 'string' ? body.user : undefined
+              service.deleteNow(id, user)
+              send(res, 200, { ok: true })
+            } catch (error) {
+              send(res, 500, { ok: false, error: String(error) })
+            }
+          },
+        }),
+      )
+
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
           path: '/api/engram/restore',
           handler: async (req, res) => {
             try {
