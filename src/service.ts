@@ -10,16 +10,18 @@ import type {
   Citation,
   DenyOutcome,
   MemoryConfig,
+  MemoryEntity,
   MemoryKind,
   PendingProposal,
   ProposeResult,
   QueryHit,
+  RecallHit,
   Scope,
   Track,
   VersionKind,
 } from './types.js';
 import { InvalidInputError } from './types.js';
-import { normalize } from './normalize.js';
+import { normalize, expandSynonyms } from './normalize.js';
 import { SQLiteProvider } from './store.js';
 import { checkEntryBudget, checkSnapshotBudget } from './budget.js';
 import { detectConflicts } from './conflict.js';
@@ -398,5 +400,67 @@ export class MemoryService {
     }
 
     return hits;
+  }
+
+  // -----------------------------------------------------------------------
+  // Recall (§5.3: step-1 injection, workspace + global-situational only)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Recall-channel candidates for the step-1 injection. Lexical only (X3):
+   * exact normalized-name match (tier 1), topic-anchor term hit (tier 2),
+   * full-text hit with synonym OR-expansion (tier 3), and same-name carrying
+   * (tier 4). Scope is the recall channel, never the snapshot: same-workspace
+   * entries plus global situational; global stable is excluded (§5.1/§5.4).
+   */
+  recall(workspaceKey: string | null, searchText: string): RecallHit[] {
+    const { text: normText } = normalize(searchText);
+    const terms = expandSynonyms(searchText, this.config.synonymGroups);
+    const inScope = (entity: MemoryEntity): boolean => {
+      if (entity.state !== 'active') return false;
+      if (entity.scope === 'workspace') return entity.workspaceKey === workspaceKey;
+      return entity.kind === 'situational';
+    };
+    const now = Date.now();
+    const toHit = (entity: MemoryEntity, tier: RecallHit['tier']): RecallHit | null => {
+      if (!inScope(entity)) return null;
+      const version = this.store.getVersion(entity.id, entity.currentRev);
+      if (version === null) return null;
+      return {
+        entity,
+        version,
+        tier,
+        expired: entity.validUntil !== undefined && entity.validUntil < now,
+      };
+    };
+    const byId = new Map<string, RecallHit>();
+    const add = (hit: RecallHit | null): void => {
+      if (hit !== null && !byId.has(hit.entity.id)) byId.set(hit.entity.id, hit);
+    };
+
+    // Tier 1: exact normalized-name match.
+    if (normText.length > 0) {
+      const exact = this.store.findEntityByName(normText, workspaceKey);
+      if (exact !== null) add(toHit(exact, 1));
+    }
+
+    // Tiers 2/3: name-anchor and full-text FTS with synonym expansion.
+    for (const { entityId, tier } of this.store.recallCandidates(terms, workspaceKey, 10)) {
+      const entity = this.store.getEntity(entityId);
+      if (entity !== null) add(toHit(entity, tier));
+    }
+
+    // Tier 4: same-name carrying — every active entity in a hit group.
+    const groupNorms = new Set<string>();
+    for (const hit of byId.values()) groupNorms.add(hit.entity.nameNorm);
+    for (const nameNorm of groupNorms) {
+      for (const sibling of this.store.listActiveByNameNorm(nameNorm)) {
+        if (!byId.has(sibling.id)) add(toHit(sibling, 4));
+      }
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      a.tier !== b.tier ? a.tier - b.tier : b.entity.updatedAt - a.entity.updatedAt,
+    );
   }
 }

@@ -131,6 +131,24 @@ export type QueryHit =
   | { source: 'pending-self'; pending: PendingProposal };
 
 // ---------------------------------------------------------------------------
+// Recall results (§5.3: relevance tiers X3, freshness N8)
+// ---------------------------------------------------------------------------
+
+/**
+ * One recall-channel candidate. `tier` is the lexical relevance "四级凑出":
+ * 1 exact normalized-name match, 2 topic-anchor term hit, 3 full-text hit,
+ * 4 same-name carrying (an entry pulled in because its group was hit).
+ * `expired` marks an explicit valid_until in the past — the injection labels
+ * it `verify`; NULL valid_until never expires (N8, no implicit thresholds).
+ */
+export interface RecallHit {
+  entity: MemoryEntity;
+  version: MemoryVersion;
+  tier: 1 | 2 | 3 | 4;
+  expired: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Service results / errors
 // ---------------------------------------------------------------------------
 
@@ -171,6 +189,10 @@ export interface MemoryConfig {
   entryBudget: number;
   /** Seed synonym groups for recall OR-expansion (X3). Array of string arrays. */
   synonymGroups: string[][];
+  /** §5.3 recall channel hard bound: max entries injected per step. Default 3. */
+  recallMax: number;
+  /** §5.3 recall channel hard bound: max characters injected per step. Default 1200. */
+  recallBudget: number;
 }
 
 export const DEFAULT_CONFIG: MemoryConfig = {
@@ -178,6 +200,8 @@ export const DEFAULT_CONFIG: MemoryConfig = {
   snapshotBudget: 4000,
   entryBudget: 2000,
   synonymGroups: [],
+  recallMax: 3,
+  recallBudget: 1200,
 };
 
 // ---------------------------------------------------------------------------

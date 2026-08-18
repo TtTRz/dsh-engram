@@ -2,9 +2,8 @@
  * dsh-engram plugin entry.
  *
  * P0: mounts the memory tools (propose / query) and holds a private
- * MemoryService per plugin instance. P2: the frozen stable snapshot section
- * (§5.2). Recall injection (P3) plugs in later — the service is the single
- * write path.
+ * MemoryService per plugin instance — the single write path. P2: the frozen
+ * stable snapshot section (§5.2). P3: step-1 recall injection (§5.3).
  */
 
 import type { Context } from '@deepseek-ai/cordis';
@@ -15,6 +14,7 @@ import { registerMemoryTools } from './tool.js';
 import { registerEngramRoutes } from './api.js';
 import { registerSnapshotSection } from './snapshot.js';
 import type { SystemPromptLike } from './snapshot.js';
+import { registerRecallInjection } from './recall.js';
 
 export const name = 'dsh-engram';
 export const inject = ['tools', 'systemPrompt'] as const;
@@ -25,6 +25,9 @@ export interface EngramConfig {
   snapshotBudget?: number;
   entryBudget?: number;
   synonymGroups?: string[][];
+  /** §5.3 recall hard bounds. */
+  recallMax?: number;
+  recallBudget?: number;
 }
 
 export function apply(ctx: Context, config?: EngramConfig): void {
@@ -33,6 +36,8 @@ export function apply(ctx: Context, config?: EngramConfig): void {
     snapshotBudget: config?.snapshotBudget ?? DEFAULT_CONFIG.snapshotBudget,
     entryBudget: config?.entryBudget ?? DEFAULT_CONFIG.entryBudget,
     synonymGroups: config?.synonymGroups ?? DEFAULT_CONFIG.synonymGroups,
+    recallMax: config?.recallMax ?? DEFAULT_CONFIG.recallMax,
+    recallBudget: config?.recallBudget ?? DEFAULT_CONFIG.recallBudget,
   };
 
   const service = new MemoryService(resolved);
@@ -49,6 +54,10 @@ export function apply(ctx: Context, config?: EngramConfig): void {
   }
   registerSnapshotSection(systemPrompt, service, resolved.snapshotBudget);
 
+  // P3: step-1 recall injection (workspace + global situational, §5.3).
+  // ctx.on is a cordis-managed listener — disposed with the fiber.
+  registerRecallInjection(ctx, service, resolved);
+
   // Panel approval API: runtime-injects the optional webServer service (see
   // api.ts). The workspace key now travels with the pending row (captured at
   // propose time), so the routes need no ctx-derived cwd.
@@ -62,6 +71,7 @@ export function apply(ctx: Context, config?: EngramConfig): void {
 export { MemoryService } from './service.js';
 export { SQLiteProvider } from './store.js';
 export { renderSnapshot, registerSnapshotSection } from './snapshot.js';
+export { composeRecallText, extractUserText, hasRecallInjection, registerRecallInjection } from './recall.js';
 export { resolveWorkspaceKey, normalizeGitOrigin, findGitRoot } from './workspace.js';
 export { normalize, toHalfWidth, toSimplified, extractTerms, expandSynonyms } from './normalize.js';
 export * from './types.js';

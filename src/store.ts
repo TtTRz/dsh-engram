@@ -554,4 +554,71 @@ export class SQLiteProvider {
       return [];
     }
   }
+
+  /**
+   * Recall-channel candidates (§5.3): FTS hits inside the recall scope —
+   * same-workspace entries plus global situational (global stable lives in
+   * the snapshot channel and is never recalled, §5.4).
+   *
+   * Two relevance tiers (X3 "四级凑出", lexical only):
+   * - `name: MATCH` — the topic anchor itself matched (tier 2 after the
+   *   exact-name lookup the service performs);
+   * - plain `MATCH` — full-text hit across name/text/terms (tier 3).
+   * The service layer resolves ties, same-name carrying, and ordering.
+   */
+  recallCandidates(
+    terms: string[],
+    workspaceKey: string | null,
+    limit: number,
+  ): Array<{ entityId: string; tier: 2 | 3 }> {
+    if (terms.length === 0) return [];
+    const orTerms = terms.map((t) => `"${t}"`).join(' OR ');
+    const scopeSql = `e.state = 'active' AND (
+      (e.scope = 'workspace' AND e.workspace_key = ?) OR
+      (e.scope = 'global' AND e.kind = 'situational')
+    )`;
+    const out: Array<{ entityId: string; tier: 2 | 3 }> = [];
+    const seen = new Set<string>();
+    const push = (rows: Array<{ entity_id: string }>, tier: 2 | 3): void => {
+      for (const row of rows) {
+        if (seen.has(row.entity_id)) continue;
+        seen.add(row.entity_id);
+        out.push({ entityId: row.entity_id, tier });
+      }
+    };
+    try {
+      const nameRows = this.db
+        .prepare(
+          `SELECT f.entity_id FROM memory_fts f
+           JOIN memory_entity e ON e.id = f.entity_id
+           WHERE memory_fts MATCH ? AND ${scopeSql} LIMIT ?`,
+        )
+        .all(`name : ( ${orTerms} )`, workspaceKey, limit) as unknown as Array<{ entity_id: string }>;
+      push(nameRows, 2);
+      if (out.length >= limit) return out.slice(0, limit);
+      const textRows = this.db
+        .prepare(
+          `SELECT f.entity_id FROM memory_fts f
+           JOIN memory_entity e ON e.id = f.entity_id
+           WHERE memory_fts MATCH ? AND ${scopeSql} LIMIT ?`,
+        )
+        .all(orTerms, workspaceKey, limit) as unknown as Array<{ entity_id: string }>;
+      push(textRows, 3);
+    } catch {
+      return [];
+    }
+    return out.slice(0, limit);
+  }
+
+  /** Every active entity in the same normalized-name group (X3 name carrying). */
+  listActiveByNameNorm(nameNorm: string): MemoryEntity[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM memory_entity
+         WHERE state = 'active' AND name_norm = ?
+         ORDER BY updated_at DESC`,
+      )
+      .all(nameNorm) as unknown as EntityRow[];
+    return rows.map(rowToEntity);
+  }
 }
