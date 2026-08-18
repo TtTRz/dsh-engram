@@ -218,7 +218,10 @@ export function registerEngramRoutes(
                 return
               }
               const user = typeof body.user === 'string' ? body.user : undefined
-              const outcome = service.approve(id, user)
+              const rawMode = body.mode
+              const mode =
+                rawMode === 'coexist' || rawMode === 'merge' ? rawMode : undefined
+              const outcome = service.approve(id, user, undefined, mode)
               send(res, 200, outcome)
             } catch (error) {
               send(res, 500, { ok: false, error: String(error) })

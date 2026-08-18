@@ -140,12 +140,12 @@ type SettleOutcome =
   | { ok: true }
   | { ok: false; reason?: string; by?: string; drift?: { baseRev?: number; currentRev?: number } }
 
-async function post(path: string, id: string): Promise<SettleOutcome | null> {
+async function post(path: string, id: string, mode?: 'coexist' | 'merge'): Promise<SettleOutcome | null> {
   try {
     const response = await fetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify(mode !== undefined ? { id, mode } : { id }),
     })
     if (!response.ok) return null
     return (await response.json()) as SettleOutcome
@@ -240,18 +240,69 @@ function ApprovalList(props: { pendings: PendingView[] | null; onChanged: () => 
         React.createElement(
           'div',
           { className: 'engram-item-actions' },
-          React.createElement(
-            'button',
-            {
-              className: 'engram-btn approve',
-              onClick: () => {
-                void post('/api/engram/approve', pending.id).then((outcome) => {
-                  settle(pending.id, outcome, '批准')
-                })
-              },
-            },
-            '批准',
-          ),
+          conflicted
+            ? React.createElement(
+                'span',
+                { className: 'engram-meta', style: { alignSelf: 'center', marginRight: 4 } },
+                '裁决：',
+              )
+            : null,
+          conflicted
+            ? React.createElement(
+                'button',
+                {
+                  className: 'engram-btn',
+                  title: '新内容成立为最新版，旧正文留在版本链',
+                  onClick: () => {
+                    void post('/api/engram/approve', pending.id).then((outcome) => {
+                      settle(pending.id, outcome, '批准')
+                    })
+                  },
+                },
+                '① 推翻旧版',
+              )
+            : React.createElement(
+                'button',
+                {
+                  className: 'engram-btn approve',
+                  onClick: () => {
+                    void post('/api/engram/approve', pending.id).then((outcome) => {
+                      settle(pending.id, outcome, '批准')
+                    })
+                  },
+                },
+                '批准',
+              ),
+          conflicted
+            ? React.createElement(
+                'button',
+                {
+                  className: 'engram-btn',
+                  title: '同主题独立成链，两条都保留',
+                  onClick: () => {
+                    void post('/api/engram/approve', pending.id, 'coexist').then((outcome) => {
+                      settle(pending.id, outcome, '并存')
+                    })
+                  },
+                },
+                '② 并存',
+              )
+            : null,
+          conflicted
+            ? React.createElement(
+                'button',
+                {
+                  className: 'engram-btn',
+                  title: '本提案正文为准，候选记忆归档留痕',
+                  onClick: () => {
+                    void post('/api/engram/approve', pending.id, 'merge').then((outcome) => {
+                      settle(pending.id, outcome, '合并')
+                    })
+                  },
+                },
+                '③ 合并',
+              )
+            : null,
           React.createElement(
             'button',
             {

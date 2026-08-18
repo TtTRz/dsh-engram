@@ -597,6 +597,14 @@ export class SQLiteProvider {
     }
   }
 
+  /** Detach a pending from its entity (coexist resolution §3.5 ②). */
+  detachPendingEntity(id: string): boolean {
+    const result = this.db
+      .prepare('UPDATE pending SET entity_id = NULL, base_rev = NULL WHERE id = ? AND status = ?')
+      .run(id, 'proposed');
+    return Number(result.changes) > 0;
+  }
+
   updatePendingStatus(id: string, status: string): number {
     const result = this.db
       .prepare('UPDATE pending SET status = ? WHERE id = ? AND status = ?')

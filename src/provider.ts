@@ -75,6 +75,7 @@ export interface MemoryProvider {
   insertPending(p: Omit<import('./types.js').PendingProposal, 'id' | 'status' | 'createdAt'>): string;
   getPending(id: string): import('./types.js').PendingProposal | null;
   updatePendingStatus(id: string, status: import('./types.js').PendingStatus): number;
+  detachPendingEntity(id: string): boolean;
   listPendingByStatus(status: import('./types.js').PendingStatus): import('./types.js').PendingProposal[];
   listPendingByEntity(entityId: string, status: import('./types.js').PendingStatus): import('./types.js').PendingProposal[];
 

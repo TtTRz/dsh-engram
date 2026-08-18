@@ -66,6 +66,51 @@ describe('H-1: approve executes action semantics', () => {
   });
 });
 
+describe('§3.5 three-choice resolution (panel modes)', () => {
+  function conflictSetup(): { svc: MemoryService; pendingId: string } {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' });
+    const base = svc.propose({ name: '端口', text: '服务监听 8899 端口', track: 'user', scope: 'global' }, null);
+    svc.approve(base.pendingId, 'a');
+    const conflict = svc.propose({ name: '端口', text: '服务监听 9999 端口', track: 'user', scope: 'global' }, null);
+    return { svc, pendingId: conflict.pendingId };
+  }
+
+  it('default approve attaches as the entity next version (refine chain)', () => {
+    const { svc, pendingId } = conflictSetup();
+    const out = svc.approve(pendingId, 'u');
+    expect(out.ok).toBe(true);
+    const entities = svc.listAllActive();
+    expect(entities).toHaveLength(1);
+    if (out.ok) {
+      const chain = svc.getVersionChain(out.entityId);
+      expect(chain.filter((n) => 'rev' in n)).toHaveLength(2);
+    }
+  });
+
+  it('coexist keeps two independent same-name chains', () => {
+    const { svc, pendingId } = conflictSetup();
+    const out = svc.approve(pendingId, 'u', undefined, 'coexist');
+    expect(out.ok).toBe(true);
+    const entities = svc.listAllActive();
+    expect(entities).toHaveLength(2);
+    expect(new Set(entities.map((e) => e.name)).size).toBe(1); // both named 端口
+    expect(new Set(entities.map((e) => e.id)).size).toBe(2); // distinct chains
+    // Both current texts coexist and both are searchable.
+    const texts = entities.map((e) => e.id).map((id) => svc.getVersion(id, svc.getEntity(id)!.currentRev)!.text);
+    expect(texts).toContain('服务监听 8899 端口');
+    expect(texts).toContain('服务监听 9999 端口');
+  });
+
+  it('merge attaches and archives the absorbed candidates', () => {
+    const { svc, pendingId } = conflictSetup();
+    const out = svc.approve(pendingId, 'u', undefined, 'merge');
+    expect(out.ok).toBe(true);
+    const active = svc.listAllActive();
+    expect(active).toHaveLength(1);
+    if (out.ok) expect(active[0]?.id).toBe(out.entityId);
+  });
+});
+
 describe('H-2: conflict candidates stay inside the proposing partition', () => {
   it('a workspace proposal never lists another workspace\'s entity as candidate', () => {
     const dbPath = `${os.tmpdir()}/engram-h2-${Date.now()}-${Math.random().toString(36).slice(2)}.db`;

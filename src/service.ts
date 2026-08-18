@@ -194,7 +194,12 @@ export class MemoryService {
   // Propose (§3.1)
   // -----------------------------------------------------------------------
 
-  propose(input: ProposeInput, workspaceKey: string | null, exactEntityId?: string): ProposeResult {
+  propose(
+    input: ProposeInput,
+    workspaceKey: string | null,
+    exactEntityId?: string,
+    forceNewEntity = false,
+  ): ProposeResult {
     const name = input.name.trim();
     if (name.length === 0) throw new InvalidInputError('name must not be empty');
     if (input.text.trim().length === 0) throw new InvalidInputError('text must not be empty');
@@ -209,10 +214,14 @@ export class MemoryService {
     // Find existing entity (for refine/contradict or same-name create). An
     // exact id (panel-initiated archive) bypasses name resolution so a
     // same-name coexisting entity can never be mistaken for the clicked one.
+    // forceNewEntity is the panel's 「并存」 choice (§3.5 ②): same-name
+    // proposals stay independent entities instead of attaching as refinements.
     const existing =
-      exactEntityId !== undefined
-        ? this.store.getEntity(exactEntityId)
-        : this.store.findEntityByName(nameNorm, workspaceKey);
+      forceNewEntity || exactEntityId === null
+        ? undefined
+        : exactEntityId !== undefined
+          ? this.store.getEntity(exactEntityId)
+          : this.store.findEntityByName(nameNorm, workspaceKey);
     const entityId = existing?.id;
     const baseRev = existing?.currentRev;
 
@@ -283,7 +292,18 @@ export class MemoryService {
   // Approve (§3.2: drift check + first-come-first-served + conflict cascade)
   // -----------------------------------------------------------------------
 
-  approve(pendingId: string, user?: string, workspaceKey: string | null = null): ApproveOutcome {
+  /**
+   * Approve with an optional §3.5 resolution mode:
+   * - undefined → default: attach as the entity's next version (refine/contradict semantics).
+   * - 'coexist' → re-file as an INDEPENDENT entity (same name, separate chain).
+   * - 'merge'   → attach AND archive the conflictWith candidates (H-1 dispatch).
+   */
+  approve(
+    pendingId: string,
+    user?: string,
+    workspaceKey: string | null = null,
+    mode?: 'coexist' | 'merge',
+  ): ApproveOutcome {
     const pending = this.store.getPending(pendingId);
     if (pending === null) throw new InvalidInputError(`no such pending: ${pendingId}`);
 
@@ -291,7 +311,18 @@ export class MemoryService {
     // long after the proposing session ended — re-deriving a "current cwd" here
     // was wrong and crashed on the nonexistent ctx.cwd). The parameter remains
     // only for callers passing an explicit key / legacy rows.
-    const wk = pending.workspaceKey ?? workspaceKey;
+    let wk = pending.workspaceKey ?? workspaceKey;
+
+    // §3.5 ② 「并存」: re-file the pending as a forced NEW entity. Done before
+    // any gate step so the drift check never applies (no base_rev) and the
+    // conflict cascade cannot supersede the sibling chains.
+    if (mode === 'coexist' && pending.entityId !== undefined) {
+      const detached = this.store.detachPendingEntity(pendingId);
+      if (detached) {
+        delete pending.entityId;
+        delete pending.baseRev;
+      }
+    }
 
     // ① First-come-first-served: status must be 'proposed'
     if (pending.status === 'approved') {
