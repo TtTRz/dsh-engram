@@ -107,8 +107,45 @@ export class MemoryService {
   }
 
   /** Every active memory with its current text — the panel browse surface. */
-  listAllActive() {
-    return this.store.listAllActive();
+  listAllActive(includeArchived = false) {
+    return this.store.listAllActive(includeArchived);
+  }
+
+  /**
+   * Panel-initiated restore: files a RESTORE proposal reviving an archived
+   * entity to its last current text. Same gate as every write (I-2);
+   * approval re-activates the entity and rebuilds its FTS row.
+   */
+  proposeRestore(entityId: string, reason?: string): { pendingId: string; message: string } {
+    const entity = this.store.getEntity(entityId);
+    if (entity === null) throw new InvalidInputError(`no such entity: ${entityId}`);
+    if (entity.state !== 'archived') {
+      throw new InvalidInputError(`entity is ${entity.state}, nothing to restore`);
+    }
+    // Restore revives the last SUBSTANTIVE text — the archive trace row
+    // ("面板删除（原正文…）") is audit trail, not content to resurrect.
+    let restoreRev = entity.currentRev;
+    let last = this.store.getVersion(entityId, restoreRev);
+    while (last !== null && last.kind === 'archive' && restoreRev > 1) {
+      restoreRev -= 1;
+      last = this.store.getVersion(entityId, restoreRev);
+    }
+    if (last === null || last.kind === 'archive') {
+      throw new InvalidInputError('entity has no restorable versions');
+    }
+    const result = this.propose(
+      {
+        name: entity.name,
+        text: last.text,
+        track: entity.track,
+        scope: entity.scope,
+        action: 'restore',
+        reason: reason ?? `panel restore to rev${restoreRev}`,
+      },
+      entity.workspaceKey ?? null,
+      entityId,
+    );
+    return { pendingId: result.pendingId, message: '已提交恢复提案，需在待审批中批准后生效。' };
   }
 
   /**
@@ -367,6 +404,11 @@ export class MemoryService {
         // H-1: an approved archive RETIRES the entity — the version row keeps
         // the audit trail, the entity leaves the active set and FTS (I-10).
         this.store.archiveEntity(eid, now);
+      } else if (pending.action === 'restore') {
+        // Panel restore (or rollback onto an archived entity): re-activate
+        // with the restored current text.
+        this.store.restoreEntity(eid, now);
+        this.store.rebuildFtsRow(eid, pending.name, pending.text);
       } else {
         this.store.rebuildFtsRow(eid, pending.name, pending.text);
       }

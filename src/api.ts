@@ -134,9 +134,11 @@ export function registerEngramRoutes(
         webServer.register({
           kind: 'exact',
           path: '/api/engram/memories',
-          handler: (_req, res) => {
+          handler: (req, res) => {
+            const url = new URL(req.url ?? '/', 'http://localhost');
+            const includeArchived = url.searchParams.get('archived') === '1';
             const now = Date.now();
-            const memories = service.listAllActive().map((row) => ({
+            const memories = service.listAllActive(includeArchived).map((row) => ({
               id: row.id,
               name: row.name,
               scope: row.scope,
@@ -144,6 +146,7 @@ export function registerEngramRoutes(
               track: row.track,
               workspaceKey: row.workspaceKey,
               rev: row.currentRev,
+              state: row.state,
               text: row.text,
               updatedAt: row.updatedAt,
               expired: row.validUntil !== null && row.validUntil < now,
@@ -238,6 +241,28 @@ export function registerEngramRoutes(
               }
               const user = typeof body.user === 'string' ? body.user : undefined
               const outcome = service.proposeArchive(id, user)
+              send(res, 200, { ok: true, ...outcome })
+            } catch (error) {
+              send(res, 500, { ok: false, error: String(error) })
+            }
+          },
+        }),
+      )
+
+      disposers.push(
+        webServer.register({
+          kind: 'exact',
+          path: '/api/engram/restore',
+          handler: async (req, res) => {
+            try {
+              const body = await readJsonBody(req)
+              const id = body.id
+              if (typeof id !== 'string' || id.length === 0) {
+                send(res, 400, { ok: false, error: 'id is required' })
+                return
+              }
+              const user = typeof body.user === 'string' ? body.user : undefined
+              const outcome = service.proposeRestore(id, user)
               send(res, 200, { ok: true, ...outcome })
             } catch (error) {
               send(res, 500, { ok: false, error: String(error) })

@@ -204,6 +204,57 @@ describe('engram approval API', () => {
     expect(remaining[0]?.id).not.toBe(clicked.id)
   })
 
+  it('archived entities surface with ?archived=1 and restore revives them', async () => {
+    const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
+    const web = fakeWebServer()
+    registerEngramRoutes(makeCtx(web), svc)
+
+    const created = svc.propose({ name: '要删的', text: '有价值内容', track: 'user', scope: 'global' }, null)
+    svc.approve(created.pendingId, 'a')
+    const entityId = svc.listAllActive()[0]!.id
+
+    // Active-only view: 1, no state field surprises.
+    const listRoute = web.routes.find((x) => x.path === '/api/engram/memories')!
+    const reqActive = makeReq('GET') as IncomingMessage & { url: string }
+    ;(reqActive as unknown as { url: string }).url = '/api/engram/memories'
+    const res1 = makeRes()
+    await listRoute.handler(reqActive, res1.res)
+    expect((res1.body() as { memories: unknown[] }).memories).toHaveLength(1)
+
+    // Delete through the panel gate.
+    const archiveRoute = web.routes.find((x) => x.path === '/api/engram/archive')!
+    const res2 = makeRes()
+    await archiveRoute.handler(makeReq('POST', { id: entityId }), res2.res)
+    const filed = res2.body() as { ok: boolean; pendingId: string }
+    svc.approve(filed.pendingId, 'deleter')
+
+    // Active-only: gone. Archived view: present with state='archived'.
+    const res3 = makeRes()
+    await listRoute.handler(reqActive, res3.res)
+    expect((res3.body() as { memories: unknown[] }).memories).toHaveLength(0)
+    const reqArchived = makeReq('GET') as IncomingMessage & { url: string }
+    ;(reqArchived as unknown as { url: string }).url = '/api/engram/memories?archived=1'
+    const res4 = makeRes()
+    await listRoute.handler(reqArchived, res4.res)
+    const archived = (res4.body() as { memories: Array<{ state: string; text: string }> }).memories
+    expect(archived).toHaveLength(1)
+    expect(archived[0]?.state).toBe('archived')
+
+    // Restore through the gate: the entity re-activates with its old text.
+    const restoreRoute = web.routes.find((x) => x.path === '/api/engram/restore')!
+    const res5 = makeRes()
+    await restoreRoute.handler(makeReq('POST', { id: entityId }), res5.res)
+    const restoreFiled = res5.body() as { ok: boolean; pendingId: string }
+    expect(restoreFiled.ok).toBe(true)
+    svc.approve(restoreFiled.pendingId, 'restorer')
+
+    const res6 = makeRes()
+    await listRoute.handler(reqActive, res6.res)
+    const revived = (res6.body() as { memories: Array<{ text: string }> }).memories
+    expect(revived).toHaveLength(1)
+    expect(revived[0]?.text).toBe('有价值内容')
+  })
+
   it('approve reports drift when the entity moved past base_rev', async () => {
     const svc = new MemoryService({ ...DEFAULT_CONFIG, dbPath: ':memory:' })
     const web = fakeWebServer()

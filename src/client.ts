@@ -279,6 +279,7 @@ interface MemoryRow {
   track: string
   workspaceKey: string | null
   rev: number
+  state: 'active' | 'archived'
   text: string
   updatedAt: number
   expired: boolean
@@ -294,9 +295,23 @@ interface ChainResponse {
   >
 }
 
-async function fetchMemories(): Promise<MemoryRow[] | null> {
+async function requestRestore(id: string): Promise<{ ok: boolean; message?: string } | null> {
   try {
-    const response = await fetch('/api/engram/memories')
+    const response = await fetch('/api/engram/restore', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!response.ok) return null
+    return (await response.json()) as { ok: boolean; message?: string }
+  } catch {
+    return null
+  }
+}
+
+async function fetchMemories(includeArchived: boolean): Promise<MemoryRow[] | null> {
+  try {
+    const response = await fetch(`/api/engram/memories${includeArchived ? '?archived=1' : ''}`)
     if (!response.ok) return null
     const payload = (await response.json()) as { memories: MemoryRow[] }
     return payload.memories
@@ -334,11 +349,13 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
   const [openChain, setOpenChain] = React.useState<string | null>(null)
   const [chain, setChain] = React.useState<ChainResponse | null>(null)
   const [archiveNotice, setArchiveNotice] = React.useState<{ id: string; text: string; warn: boolean } | null>(null)
+  const [showArchived, setShowArchived] = React.useState(false)
+  const [tick, setTick] = React.useState(0)
 
-  const load = (): void => {
-    void fetchMemories().then(setRows)
-  }
-  React.useEffect(load, [])
+  const load = React.useCallback((): void => {
+    void fetchMemories(showArchived).then(setRows)
+  }, [showArchived])
+  React.useEffect(load, [load, tick])
 
   if (rows === null) {
     return React.createElement('div', { className: 'engram-panel-empty' }, '加载中…')
@@ -358,10 +375,25 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
     void fetchChain(id).then(setChain)
   }
 
+  const toggle = React.createElement(
+    'label',
+    { className: 'engram-meta', style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8 } },
+    React.createElement('input', {
+      type: 'checkbox',
+      checked: showArchived,
+      onChange: (event: unknown) => setShowArchived((event as { target: { checked: boolean } }).target.checked),
+    }),
+    '显示已归档（供审查）',
+  )
+
   return React.createElement(
     'div',
-    { className: 'engram-panel' },
-    rows.map((row) =>
+    null,
+    toggle,
+    React.createElement(
+      'div',
+      { className: 'engram-panel' },
+      rows.map((row) =>
       React.createElement(
         'div',
         { key: row.id, className: 'engram-item' },
@@ -370,6 +402,7 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
           { className: 'engram-item-title' },
           React.createElement('span', { className: 'engram-badge' }, `${row.scope}/${row.kind}`),
           row.expired ? React.createElement('span', { className: 'engram-badge' }, '已过期·需核实') : null,
+          row.state === 'archived' ? React.createElement('span', { className: 'engram-badge' }, '已归档') : null,
           row.name,
         ),
         React.createElement('div', { className: 'engram-item-text' }, row.text),
@@ -386,13 +419,37 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
             { className: 'engram-btn', onClick: () => toggleChain(row.id) },
             openChain === row.id ? '收起历史' : '查看历史',
           ),
-          React.createElement(
-            'button',
-            {
-              className: 'engram-btn',
-              onClick: () => {
-                setArchiveNotice({ id: row.id, text: '正在提交删除提案…', warn: false })
-                void requestArchive(row.id).then((outcome) => {
+          row.state === 'archived'
+            ? React.createElement(
+                'button',
+                {
+                  className: 'engram-btn',
+                  onClick: () => {
+                    setArchiveNotice({ id: row.id, text: '正在提交恢复提案…', warn: false })
+                    void requestRestore(row.id).then((outcome) => {
+                      if (outcome === null || !outcome.ok) {
+                        setArchiveNotice({ id: row.id, text: '提交恢复提案失败，请重试。', warn: true })
+                        return
+                      }
+                      setArchiveNotice({
+                        id: row.id,
+                        text: '已提交恢复提案：请到「待审批」中批准，批准后该记忆将重新生效。',
+                        warn: false,
+                      })
+                      props.onProposed?.()
+                      setTick((t) => t + 1)
+                    })
+                  },
+                },
+                '恢复',
+              )
+            : React.createElement(
+                'button',
+                {
+                  className: 'engram-btn',
+                  onClick: () => {
+                    setArchiveNotice({ id: row.id, text: '正在提交删除提案…', warn: false })
+                    void requestArchive(row.id).then((outcome) => {
                   if (outcome === null || !outcome.ok) {
                     setArchiveNotice({ id: row.id, text: '提交删除提案失败，请重试。', warn: true })
                     return
@@ -403,11 +460,12 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
                     warn: false,
                   })
                   props.onProposed?.()
+                  setTick((t) => t + 1)
                 })
               },
             },
             '删除',
-          ),
+              ),
         ),
         archiveNotice !== null && archiveNotice.id === row.id
           ? React.createElement(
@@ -434,6 +492,7 @@ function MemoryList(props: { onProposed?: () => void }): React.ReactNode {
               )
           : null,
       ),
+    ),
     ),
   )
 }

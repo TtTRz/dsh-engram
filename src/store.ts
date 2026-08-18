@@ -325,6 +325,13 @@ export class SQLiteProvider {
       .run(rev, now, id);
   }
 
+  /** Re-activate an archived entity (approved restore; FTS rebuilt by caller). */
+  restoreEntity(id: string, now: number): void {
+    this.db
+      .prepare("UPDATE memory_entity SET state = 'active', updated_at = ? WHERE id = ?")
+      .run(now, id);
+  }
+
   archiveEntity(id: string, now: number): void {
     this.db
       .prepare("UPDATE memory_entity SET state = 'archived', updated_at = ? WHERE id = ?")
@@ -360,7 +367,13 @@ export class SQLiteProvider {
    * Every active entity with its current text, newest first — the browse
    * surface for the panel's "existing memories" tab (read-only).
    */
-  listAllActive(): Array<{
+  /**
+   * Every entity with its current text, newest first — the browse surface
+   * for the panel's "existing memories" tab. `includeArchived` widens the
+   * audit view: retired entities render with their final state so a human
+   * can review deletions and restore when needed.
+   */
+  listAllActive(includeArchived = false): Array<{
     id: string;
     name: string;
     scope: 'global' | 'workspace';
@@ -368,18 +381,25 @@ export class SQLiteProvider {
     track: string;
     workspaceKey: string | null;
     currentRev: number;
+    state: 'active' | 'archived';
     text: string;
     validUntil: number | null;
     updatedAt: number;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT e.id, e.name, e.scope, e.kind, e.track, e.workspace_key,
-                e.current_rev, e.valid_until, e.updated_at, v.text
-         FROM memory_entity e
-         JOIN memory_version v ON v.entity_id = e.id AND v.rev = e.current_rev
-         WHERE e.state = 'active'
-         ORDER BY e.updated_at DESC`,
+        includeArchived
+          ? `SELECT e.id, e.name, e.scope, e.kind, e.track, e.workspace_key,
+                  e.current_rev, e.state, e.valid_until, e.updated_at, v.text
+           FROM memory_entity e
+           JOIN memory_version v ON v.entity_id = e.id AND v.rev = e.current_rev
+           ORDER BY e.updated_at DESC`
+          : `SELECT e.id, e.name, e.scope, e.kind, e.track, e.workspace_key,
+                  e.current_rev, e.state, e.valid_until, e.updated_at, v.text
+           FROM memory_entity e
+           JOIN memory_version v ON v.entity_id = e.id AND v.rev = e.current_rev
+           WHERE e.state = 'active'
+           ORDER BY e.updated_at DESC`,
       )
       .all() as unknown as Array<{
       id: string;
@@ -389,6 +409,7 @@ export class SQLiteProvider {
       track: string;
       workspace_key: string | null;
       current_rev: number;
+      state: 'active' | 'archived';
       valid_until: number | null;
       updated_at: number;
       text: string;
@@ -401,6 +422,7 @@ export class SQLiteProvider {
       track: r.track,
       workspaceKey: r.workspace_key,
       currentRev: r.current_rev,
+      state: r.state,
       text: r.text,
       validUntil: r.valid_until,
       updatedAt: r.updated_at,

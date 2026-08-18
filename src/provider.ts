@@ -61,9 +61,10 @@ export interface MemoryProvider {
   findEntityByName(nameNorm: string, workspaceKey: string | null): import('./types.js').MemoryEntity | null;
   updateEntityCurrentRev(id: string, rev: number, now: number): void;
   archiveEntity(id: string, now: number): void;
+  restoreEntity(id: string, now: number): void;
   listActiveByScope(workspaceKey: string | null, kind: string): import('./types.js').MemoryEntity[];
   listActiveByNameNorm(nameNorm: string): import('./types.js').MemoryEntity[];
-  listAllActive(): ReturnType<SQLiteProvider['listAllActive']>;
+  listAllActive(includeArchived?: boolean): ReturnType<SQLiteProvider['listAllActive']>;
   listStableSnapshot(): StableSnapshotRow[];
 
   insertVersion(v: InsertVersion, now: number): void;
